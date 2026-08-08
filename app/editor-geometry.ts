@@ -1,8 +1,9 @@
-import type { DiagramElement, DocumentV1, Edge, Plate, PositionedElement, VariableNode } from "./editor-model";
+import { displayNodeSize, type DiagramElement, type DocumentV1, type Edge, type Plate, type PositionedElement, type VariableNode } from "./editor-model.ts";
 
 export interface Point { x: number; y: number }
 export interface Bounds { x: number; y: number; width: number; height: number }
-export const BAR_HEAD_GAP = 9;
+export const BAR_HEAD_GAP = 4.5;
+export const EDGE_LABEL_OFFSET = 26;
 
 export function snap(value: number, gridSize = 20): number {
   return Math.round(value / gridSize) * gridSize;
@@ -12,7 +13,7 @@ export function variableBoundaryPoint(node: VariableNode, toward: Point): Point 
   const dx = toward.x - node.x;
   const dy = toward.y - node.y;
   if (dx === 0 && dy === 0) return { x: node.x, y: node.y };
-  const radius = node.size / 2;
+  const radius = displayNodeSize(node) / 2;
   if (node.variableKind === "random" || node.variableKind === "double") {
     const distance = Math.hypot(dx, dy);
     return { x: node.x + (dx / distance) * radius, y: node.y + (dy / distance) * radius };
@@ -79,14 +80,15 @@ export function squigglyPath(start: Point, end: Point, amplitude = 5, wavelength
     const sign = index % 2 === 0 ? 1 : -1;
     const controlOffset = sign * amplitude * (4 / 3);
     const control1 = localPoint(start, ux, uy, nx, ny, from + halfWave / 3, controlOffset);
-    const control2 = localPoint(start, ux, uy, nx, ny, from + (halfWave * 2) / 3, controlOffset);
+    const terminalOffset = index === halfWaves - 1 ? 0 : controlOffset;
+    const control2 = localPoint(start, ux, uy, nx, ny, from + (halfWave * 2) / 3, terminalOffset);
     const destination = localPoint(start, ux, uy, nx, ny, to, 0);
     commands.push(`C ${pathPoint(control1)} ${pathPoint(control2)} ${pathPoint(destination)}`);
   }
   return commands.join(" ");
 }
 
-export function edgeLabelPoint(start: Point, end: Point, offset = 14): Point {
+export function edgeLabelPoint(start: Point, end: Point, offset = EDGE_LABEL_OFFSET): Point {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
   const length = Math.hypot(dx, dy);
@@ -123,7 +125,8 @@ export function scaledMathDimensions(
 export function elementBounds(element: DiagramElement): Bounds | null {
   if (element.type === "edge") return null;
   if (element.type === "variable") {
-    return { x: element.x - element.size / 2, y: element.y - element.size / 2, width: element.size, height: element.size };
+    const size = displayNodeSize(element);
+    return { x: element.x - size / 2, y: element.y - size / 2, width: size, height: size };
   }
   if (element.type === "plate") return { x: element.x, y: element.y, width: element.width, height: element.height };
   const width = Math.max(34, element.text.replace(/\\./g, "x").length * 9.5);

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   documentReducer,
+  displayNodeSize,
   emptyDocument,
   labelToTex,
   sampleDocument,
@@ -10,6 +11,7 @@ import {
 } from "../app/editor-model.ts";
 import {
   BAR_HEAD_GAP,
+  EDGE_LABEL_OFFSET,
   edgeLabelPoint,
   edgeEndpoints,
   resizePlate,
@@ -57,6 +59,9 @@ test("computes attached edge endpoints and a smooth sinusoidal path", () => {
   assert.ok(path.split("C").length > 8);
   assert.doesNotMatch(path, / L /);
   assert.notEqual(path, `M ${endpoints.start.x} ${endpoints.start.y} L ${endpoints.end.x} ${endpoints.end.y}`);
+  const finalCurve = path.slice(path.lastIndexOf("C")).trim().split(/\s+/);
+  assert.equal(Number(finalCurve[4]), endpoints.end.y);
+  assert.ok(Number(finalCurve[3]) < endpoints.end.x);
 });
 
 test("pulls switch bars back from the target boundary and positions attached labels", () => {
@@ -65,9 +70,21 @@ test("pulls switch bars back from the target boundary and positions attached lab
   const arrowEndpoints = edgeEndpoints(arrow, document);
   const barEndpoints = edgeEndpoints({ ...arrow, headStyle: "bar" }, document);
   assert.ok(arrowEndpoints && barEndpoints);
-  assert.equal(Math.round(arrowEndpoints.end.x - barEndpoints.end.x), BAR_HEAD_GAP);
+  assert.ok(Math.abs((arrowEndpoints.end.x - barEndpoints.end.x) - BAR_HEAD_GAP) < 0.001);
   const label = edgeLabelPoint(barEndpoints.start, barEndpoints.end);
-  assert.ok(label.y < barEndpoints.start.y);
+  assert.equal(barEndpoints.start.y - label.y, EDGE_LABEL_OFFSET);
+});
+
+test("optionally expands labelled nodes and uses the fitted boundary for edges", () => {
+  const document = sampleDocument();
+  const node = document.elements.find((item) => item.id === "node-x");
+  node.label = "$x_{long\\_label}$";
+  node.autoFit = true;
+  const fitted = displayNodeSize(node);
+  assert.ok(fitted > node.size);
+  const edge = document.elements.find((item) => item.type === "edge");
+  const endpoints = edgeEndpoints(edge, document);
+  assert.equal(endpoints.end.x, node.x - fitted / 2);
 });
 
 test("keeps the math em scale stable when scripts make the view box taller", () => {
@@ -112,8 +129,9 @@ test("validates safe mixed labels and converts them to TeX", () => {
 test("accepts valid version-one documents and rejects malformed graphs", () => {
   assert.equal(validateDocument(sampleDocument()).ok, true);
   const extended = sampleDocument();
-  extended.elements.push({ id: "factor", type: "variable", variableKind: "factor", x: 80, y: 80, size: 14, observed: false, label: "" });
-  extended.elements.push({ id: "undirected", type: "edge", sourceId: "factor", targetId: "node-x", lineStyle: "straight", headStyle: "none", label: "$\\psi$" });
+  extended.elements.push({ id: "factor", type: "variable", variableKind: "factor", x: 80, y: 80, size: 14, observed: false, label: "", autoFit: false });
+  extended.elements.push({ id: "undirected", type: "edge", sourceId: "factor", targetId: "node-x", lineStyle: "straight", headStyle: "none", label: "$\\psi$", strokeStyle: "dashed" });
+  extended.elements.find((item) => item.type === "plate").strokeStyle = "dashed";
   assert.equal(validateDocument(extended).ok, true);
   const legacy = sampleDocument();
   for (const element of legacy.elements) {

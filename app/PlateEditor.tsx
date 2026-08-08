@@ -15,6 +15,7 @@ import {
 import {
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
+  displayNodeSize,
   documentReducer,
   emptyDocument,
   isPositioned,
@@ -99,16 +100,6 @@ const STORAGE_KEY = "plate-studio-document-v1";
 const MIME_TYPE = "application/x-plate-studio-element";
 let mathRenderQueue: Promise<unknown> = Promise.resolve();
 
-function hasMath(source: string): boolean {
-  let escaped = false;
-  for (const char of source) {
-    if (escaped) escaped = false;
-    else if (char === "\\") escaped = true;
-    else if (char === "$") return true;
-  }
-  return false;
-}
-
 function plainLabel(source: string): string {
   return source.replace(/\\\$/g, "\u0000").replace(/\$/g, "").replace(/\u0000/g, "$");
 }
@@ -176,7 +167,7 @@ function MathLabel({
 }) {
   const [renderedMath, setRenderedMath] = useState<{ source: string; markup: string } | null>(null);
   const labelError = validateLabel(source);
-  const shouldTypeset = hasMath(source) && !labelError;
+  const shouldTypeset = Boolean(source.trim()) && !labelError;
 
   useEffect(() => {
     let cancelled = false;
@@ -282,7 +273,7 @@ function SegmentButton({ active, onClick, children }: { active: boolean; onClick
 }
 
 function diamondPoints(node: VariableNode, extra = 0): string {
-  const radius = node.size / 2 + extra;
+  const radius = displayNodeSize(node) / 2 + extra;
   return [
     `${node.x},${node.y - radius}`,
     `${node.x + radius},${node.y}`,
@@ -293,7 +284,8 @@ function diamondPoints(node: VariableNode, extra = 0): string {
 
 function NodeGlyph({ node }: { node: VariableNode }) {
   const fill = node.observed ? "#aeb9bc" : "#ffffff";
-  const radius = node.size / 2;
+  const size = displayNodeSize(node);
+  const radius = size / 2;
   if (node.variableKind === "random") {
     return <circle cx={node.x} cy={node.y} r={radius} fill={fill} stroke="#27313a" strokeWidth="2.2" />;
   }
@@ -313,8 +305,8 @@ function NodeGlyph({ node }: { node: VariableNode }) {
       <rect
         x={node.x - radius}
         y={node.y - radius}
-        width={node.size}
-        height={node.size}
+        width={size}
+        height={size}
         fill="#27313a"
         stroke="#27313a"
         strokeWidth="1"
@@ -325,8 +317,8 @@ function NodeGlyph({ node }: { node: VariableNode }) {
     <rect
       x={node.x - radius}
       y={node.y - radius}
-      width={node.size}
-      height={node.size}
+      width={size}
+      height={size}
       rx="2"
       fill={fill}
       stroke="#27313a"
@@ -336,8 +328,9 @@ function NodeGlyph({ node }: { node: VariableNode }) {
 }
 
 function NodeSelection({ node }: { node: VariableNode }) {
+  const size = displayNodeSize(node);
   if (node.variableKind === "random" || node.variableKind === "double") {
-    return <circle data-editor-ui="true" cx={node.x} cy={node.y} r={node.size / 2 + 3} fill="none" stroke="#0c7a84" strokeWidth="2.5" pointerEvents="none" />;
+    return <circle data-editor-ui="true" cx={node.x} cy={node.y} r={size / 2 + 3} fill="none" stroke="#0c7a84" strokeWidth="2.5" pointerEvents="none" />;
   }
   if (node.variableKind === "diamond") {
     return <polygon data-editor-ui="true" points={diamondPoints(node, 4)} fill="none" stroke="#0c7a84" strokeWidth="2.5" strokeLinejoin="round" pointerEvents="none" />;
@@ -346,10 +339,10 @@ function NodeSelection({ node }: { node: VariableNode }) {
   return (
     <rect
       data-editor-ui="true"
-      x={node.x - node.size / 2 - extra}
-      y={node.y - node.size / 2 - extra}
-      width={node.size + extra * 2}
-      height={node.size + extra * 2}
+      x={node.x - size / 2 - extra}
+      y={node.y - size / 2 - extra}
+      width={size + extra * 2}
+      height={size + extra * 2}
       rx={node.variableKind === "factor" ? 2 : 4}
       fill="none"
       stroke="#0c7a84"
@@ -382,6 +375,7 @@ function makeElement(kind: PaletteKind, point: Point, document: DocumentV1): Pos
       height: 200,
       cornerRadius: 10,
       label: "$N$",
+      strokeStyle: "solid",
     };
   }
   if (kind === "text") return { id: uid("text"), type: "text", x: px, y: py, text: "$x_n$" };
@@ -394,6 +388,7 @@ function makeElement(kind: PaletteKind, point: Point, document: DocumentV1): Pos
     size: kind === "factor" ? 14 : 56,
     observed: false,
     label: kind === "factor" ? "" : kind === "random" || kind === "double" ? "$z$" : "$f$",
+    autoFit: false,
   };
 }
 
@@ -638,9 +633,11 @@ export default function PlateEditor() {
     const point = canvasPoint(event);
     if (interaction.kind === "marquee") {
       const marquee = rectangleFromPoints(interaction.start, point);
+      const isClick = marquee.width < 4 && marquee.height < 4;
       const hits = diagram.elements
         .filter((element) => element.type !== "edge")
         .filter((element) => {
+          if (element.type === "plate" && isClick) return false;
           const bounds = elementBounds(element);
           return bounds && boundsIntersect(marquee, bounds);
         })
@@ -663,6 +660,7 @@ export default function PlateEditor() {
             lineStyle: "straight",
             headStyle: "arrow",
             label: "",
+            strokeStyle: "solid",
           },
         });
         setTool("select");
@@ -762,26 +760,26 @@ export default function PlateEditor() {
   }, [diagram]);
 
   const waitForRenderedLabels = useCallback(async () => {
-    const mathCount = diagram.elements.filter((element) => {
-      if (element.type === "variable") return hasMath(element.label) && !validateLabel(element.label);
-      if (element.type === "text") return hasMath(element.text) && !validateLabel(element.text);
-      if (element.type === "plate") return hasMath(element.label ?? "") && !validateLabel(element.label ?? "");
-      if (element.type === "edge") return hasMath(element.label ?? "") && !validateLabel(element.label ?? "");
+    const labelCount = diagram.elements.filter((element) => {
+      if (element.type === "variable") return Boolean(element.label.trim()) && !validateLabel(element.label);
+      if (element.type === "text") return Boolean(element.text.trim()) && !validateLabel(element.text);
+      if (element.type === "plate") return Boolean(element.label?.trim()) && !validateLabel(element.label ?? "");
+      if (element.type === "edge") return Boolean(element.label?.trim()) && !validateLabel(element.label ?? "");
       return false;
     }).length;
-    if (!mathCount) return true;
+    if (!labelCount) return true;
     const mathJax = await waitForMathJax();
     if (!mathJax) return false;
     const started = Date.now();
     while (Date.now() - started < 3000) {
-      if ((canvasRef.current?.querySelectorAll('[data-math-rendered="true"]').length ?? 0) >= mathCount) return true;
+      if ((canvasRef.current?.querySelectorAll('[data-math-rendered="true"]').length ?? 0) >= labelCount) return true;
       await new Promise((resolve) => window.setTimeout(resolve, 60));
     }
     return false;
   }, [diagram.elements]);
 
   const exportSvg = useCallback(async () => {
-    if (!(await waitForRenderedLabels())) showToast("Math is still loading; the visible fallback text will be exported.");
+    if (!(await waitForRenderedLabels())) showToast("Labels are still loading; the visible fallback text will be exported.");
     const serialized = serializeSvg();
     if (!serialized) return;
     downloadBlob(new Blob([serialized.source], { type: "image/svg+xml;charset=utf-8" }), "plate-diagram.svg");
@@ -789,7 +787,7 @@ export default function PlateEditor() {
   }, [serializeSvg, showToast, waitForRenderedLabels]);
 
   const exportPng = useCallback(async () => {
-    if (!(await waitForRenderedLabels())) showToast("Math is still loading; the visible fallback text will be exported.");
+    if (!(await waitForRenderedLabels())) showToast("Labels are still loading; the visible fallback text will be exported.");
     const serialized = serializeSvg();
     if (!serialized) return;
     const url = URL.createObjectURL(new Blob([serialized.source], { type: "image/svg+xml;charset=utf-8" }));
@@ -971,9 +969,10 @@ export default function PlateEditor() {
                         width={plate.width}
                         height={plate.height}
                         rx={plate.cornerRadius}
-                        fill="rgba(255,255,255,0.34)"
+                        fill="none"
                         stroke="#34414a"
                         strokeWidth="2"
+                        strokeDasharray={plate.strokeStyle === "dashed" ? "10 7" : undefined}
                         pointerEvents="stroke"
                       />
                       {selection.includes(plate.id) && (
@@ -1027,6 +1026,7 @@ export default function PlateEditor() {
                           strokeWidth="2.1"
                           strokeLinecap="round"
                           strokeLinejoin="round"
+                          strokeDasharray={edge.strokeStyle === "dashed" ? "8 6" : undefined}
                           markerEnd={markerEnd}
                           pointerEvents="none"
                         />
@@ -1130,10 +1130,10 @@ export default function PlateEditor() {
                         <NodeGlyph node={element} />
                         {selected && <NodeSelection node={element} />}
                         {element.variableKind !== "factor" && element.label && (
-                          <MathLabel source={element.label} x={element.x} y={element.y} maxWidth={element.size - 12} fontSize={17} className="node-label" />
+                          <MathLabel source={element.label} x={element.x} y={element.y} maxWidth={displayNodeSize(element) - 16} fontSize={17} className="node-label" />
                         )}
                         {tool === "connect" && (
-                          <circle data-editor-ui="true" cx={element.x} cy={element.y} r={element.size / 2 + 7} fill="none" stroke="#0c7a84" strokeWidth="2" strokeDasharray="3 4" pointerEvents="none" />
+                          <circle data-editor-ui="true" cx={element.x} cy={element.y} r={displayNodeSize(element) / 2 + 7} fill="none" stroke="#0c7a84" strokeWidth="2" strokeDasharray="3 4" pointerEvents="none" />
                         )}
                       </g>
                     );
@@ -1258,6 +1258,7 @@ function ElementInspector({
         size: kind === "factor" ? 14 : leavingFactor ? 56 : element.size,
         observed: kind === "factor" ? false : element.observed,
         label: kind === "factor" ? "" : element.label || defaultLabel,
+        autoFit: kind === "factor" ? false : element.autoFit,
       });
     };
     return (
@@ -1285,6 +1286,14 @@ function ElementInspector({
                 <SegmentButton active={!element.observed} onClick={() => onUpdate(element.id, { observed: false })}>Unknown</SegmentButton>
                 <SegmentButton active={element.observed} onClick={() => onUpdate(element.id, { observed: true })}>Known</SegmentButton>
               </div>
+            </div>
+            <div className="field-group">
+              <label>Fit label</label>
+              <div className="segment-control">
+                <SegmentButton active={!element.autoFit} onClick={() => onUpdate(element.id, { autoFit: false })}>Fixed</SegmentButton>
+                <SegmentButton active={Boolean(element.autoFit)} onClick={() => onUpdate(element.id, { autoFit: true })}>Expand</SegmentButton>
+              </div>
+              <p className="field-help">Expand grows the node as needed to keep its label inside.</p>
             </div>
           </>
         )}
@@ -1332,6 +1341,13 @@ function ElementInspector({
             <SegmentButton active={element.cornerRadius > 0} onClick={() => onUpdate(element.id, { cornerRadius: 10 })}>Rounded</SegmentButton>
           </div>
         </div>
+        <div className="field-group">
+          <label>Border</label>
+          <div className="segment-control">
+            <SegmentButton active={(element.strokeStyle ?? "solid") === "solid"} onClick={() => onUpdate(element.id, { strokeStyle: "solid" })}>Solid</SegmentButton>
+            <SegmentButton active={element.strokeStyle === "dashed"} onClick={() => onUpdate(element.id, { strokeStyle: "dashed" })}>Dashed</SegmentButton>
+          </div>
+        </div>
         <PositionFields element={element} onUpdate={onUpdate} />
         <p className="inspector-note">Plates stay behind other elements. Group a plate with its contents when you want them to move together.</p>
         <button type="button" className="danger-wide-button" onClick={onDelete}>Delete plate</button>
@@ -1357,6 +1373,13 @@ function ElementInspector({
         <div className="segment-control">
           <SegmentButton active={element.lineStyle === "straight"} onClick={() => onUpdate(element.id, { lineStyle: "straight" })}>Straight</SegmentButton>
           <SegmentButton active={element.lineStyle === "squiggly"} onClick={() => onUpdate(element.id, { lineStyle: "squiggly" })}>Squiggly</SegmentButton>
+        </div>
+      </div>
+      <div className="field-group">
+        <label>Stroke</label>
+        <div className="segment-control">
+          <SegmentButton active={(element.strokeStyle ?? "solid") === "solid"} onClick={() => onUpdate(element.id, { strokeStyle: "solid" })}>Solid</SegmentButton>
+          <SegmentButton active={element.strokeStyle === "dashed"} onClick={() => onUpdate(element.id, { strokeStyle: "dashed" })}>Dashed</SegmentButton>
         </div>
       </div>
       <div className="field-group">

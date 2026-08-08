@@ -5,6 +5,7 @@ export const GRID_SIZE = 20;
 export type VariableKind = "random" | "deterministic" | "double" | "diamond" | "factor";
 export type LineStyle = "straight" | "squiggly";
 export type HeadStyle = "arrow" | "bar" | "none";
+export type StrokeStyle = "solid" | "dashed";
 
 export interface CanvasSettings {
   width: number;
@@ -23,6 +24,7 @@ export interface VariableNode {
   size: number;
   observed: boolean;
   label: string;
+  autoFit?: boolean;
 }
 
 export interface TextNode {
@@ -42,6 +44,7 @@ export interface Plate {
   height: number;
   cornerRadius: number;
   label?: string;
+  strokeStyle?: StrokeStyle;
 }
 
 export interface Edge {
@@ -52,6 +55,7 @@ export interface Edge {
   lineStyle: LineStyle;
   headStyle: HeadStyle;
   label?: string;
+  strokeStyle?: StrokeStyle;
 }
 
 export type PositionedElement = VariableNode | TextNode | Plate;
@@ -114,6 +118,7 @@ export function sampleDocument(): DocumentV1 {
         height: 340,
         cornerRadius: 10,
         label: "$n = 1, \\ldots, N$",
+        strokeStyle: "solid",
       },
       {
         id: "node-theta",
@@ -124,6 +129,7 @@ export function sampleDocument(): DocumentV1 {
         size: 56,
         observed: false,
         label: "$\\theta$",
+        autoFit: false,
       },
       {
         id: "node-x",
@@ -134,6 +140,7 @@ export function sampleDocument(): DocumentV1 {
         size: 56,
         observed: true,
         label: "$x_n$",
+        autoFit: false,
       },
       {
         id: "edge-sample",
@@ -143,6 +150,7 @@ export function sampleDocument(): DocumentV1 {
         lineStyle: "straight",
         headStyle: "arrow",
         label: "",
+        strokeStyle: "solid",
       },
     ],
     groups: [],
@@ -151,6 +159,18 @@ export function sampleDocument(): DocumentV1 {
 
 export function isPositioned(element: DiagramElement): element is PositionedElement {
   return element.type !== "edge";
+}
+
+export function displayNodeSize(node: VariableNode, fontSize = 17): number {
+  if (!node.autoFit || node.variableKind === "factor" || !node.label.trim()) return node.size;
+  const visibleLabel = node.label
+    .replace(/\\(?:boldsymbol|mathbf|mathrm|mathit|text)\b/g, "")
+    .replace(/\\[a-zA-Z]+/g, "M")
+    .replace(/\\./g, "M")
+    .replace(/[$^_{}]/g, "");
+  const estimatedWidth = Math.max(fontSize, visibleLabel.length * fontSize * 0.58);
+  const fitted = Math.ceil((estimatedWidth + 28) / 4) * 4;
+  return Math.max(node.size, Math.min(280, fitted));
 }
 
 export function documentReducer(document: DocumentV1, action: DocumentAction): DocumentV1 {
@@ -274,7 +294,8 @@ export function validateDocument(value: unknown): { ok: true; document: Document
       if (
         !["random", "deterministic", "double", "diamond", "factor"].includes(String(item.variableKind)) ||
         !finiteNumber(item.x) || !finiteNumber(item.y) || !finiteNumber(item.size) ||
-        typeof item.observed !== "boolean" || typeof item.label !== "string"
+        typeof item.observed !== "boolean" || typeof item.label !== "string" ||
+        (item.autoFit !== undefined && typeof item.autoFit !== "boolean")
       ) return { ok: false, error: `Variable ${item.id} is invalid.` };
       variableIds.add(item.id as string);
     } else if (item.type === "text") {
@@ -284,14 +305,16 @@ export function validateDocument(value: unknown): { ok: true; document: Document
       if (
         !finiteNumber(item.x) || !finiteNumber(item.y) || !finiteNumber(item.width) ||
         !finiteNumber(item.height) || !finiteNumber(item.cornerRadius) ||
-        (item.label !== undefined && typeof item.label !== "string")
+        (item.label !== undefined && typeof item.label !== "string") ||
+        (item.strokeStyle !== undefined && !["solid", "dashed"].includes(String(item.strokeStyle)))
       ) return { ok: false, error: `Plate ${item.id} is invalid.` };
     } else if (item.type === "edge") {
       if (
         typeof item.sourceId !== "string" || typeof item.targetId !== "string" ||
         item.sourceId === item.targetId || !["straight", "squiggly"].includes(String(item.lineStyle)) ||
         !["arrow", "bar", "none"].includes(String(item.headStyle)) ||
-        (item.label !== undefined && typeof item.label !== "string")
+        (item.label !== undefined && typeof item.label !== "string") ||
+        (item.strokeStyle !== undefined && !["solid", "dashed"].includes(String(item.strokeStyle)))
       ) return { ok: false, error: `Connection ${item.id} is invalid.` };
     } else {
       return { ok: false, error: `Unknown element type: ${String(item.type)}.` };
