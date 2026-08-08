@@ -235,10 +235,21 @@ button { color: inherit; }
   color: #26343b;
   font-family: Georgia, serif;
   font-style: italic;
+  position: relative;
 }
 
 .preview-circle { border-radius: 50%; }
 .preview-square { border-radius: 2px; }
+.preview-double { border-radius: 50%; }
+.preview-double::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border: 1.6px solid #313d44;
+  border-radius: 50%;
+}
+.preview-diamond { width: 27px; height: 27px; margin: 0 4px; transform: rotate(45deg); }
+.preview-factor { width: 14px; height: 14px; margin: 0 11px; border: 0; background: #27313a; }
 .preview-plate { height: 28px; border-radius: 6px; }
 .preview-text { border-color: transparent; font-size: 17px; }
 
@@ -338,6 +349,8 @@ button { color: inherit; }
 .field-help.is-error { color: var(--danger); }
 
 .segment-control { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; border: 1px solid var(--line); border-radius: 8px; background: #eef0ef; }
+.segment-control-three { grid-template-columns: repeat(3, 1fr); }
+.node-shape-control { grid-template-columns: repeat(3, 1fr); gap: 2px; }
 .segment-button { min-height: 31px; padding: 5px; border: 0; border-radius: 5px; background: transparent; color: #707a80; cursor: pointer; font-size: 9.5px; font-weight: 620; }
 .segment-button.is-active { background: white; color: var(--accent-dark); box-shadow: 0 1px 4px rgba(25, 35, 40, 0.12); }
 
@@ -400,4 +413,3 @@ button { color: inherit; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
-

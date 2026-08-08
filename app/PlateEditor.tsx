@@ -28,14 +28,17 @@ import {
   type Edge,
   type Plate,
   type PositionedElement,
+  type VariableKind,
   type VariableNode,
 } from "./editor-model";
 import {
   boundsIntersect,
   contentBounds,
+  edgeLabelPoint,
   edgeEndpoints,
   elementBounds,
   resizePlate,
+  scaledMathDimensions,
   snap,
   squigglyPath,
   straightPath,
@@ -44,7 +47,7 @@ import {
 } from "./editor-geometry";
 
 type Tool = "select" | "connect";
-type PaletteKind = "random" | "deterministic" | "plate" | "text";
+type PaletteKind = VariableKind | "plate" | "text";
 
 interface MathJaxApi {
   startup?: { promise?: Promise<unknown> };
@@ -157,17 +160,19 @@ function MathLabel({
   x,
   y,
   maxWidth = 280,
-  height = 24,
   fontSize = 20,
   className = "diagram-label",
+  anchor = "middle",
+  verticalAnchor = "middle",
 }: {
   source: string;
   x: number;
   y: number;
   maxWidth?: number;
-  height?: number;
   fontSize?: number;
   className?: string;
+  anchor?: "middle" | "end";
+  verticalAnchor?: "middle" | "bottom";
 }) {
   const [renderedMath, setRenderedMath] = useState<{ source: string; markup: string } | null>(null);
   const labelError = validateLabel(source);
@@ -186,18 +191,17 @@ function MathLabel({
         const viewBox = (svg.getAttribute("viewBox") || "0 0 1000 500")
           .split(/\s+/)
           .map(Number);
-        const ratio = Math.max(0.1, viewBox[2] / Math.max(1, viewBox[3]));
-        let renderHeight = height;
-        let renderWidth = ratio * renderHeight;
-        if (renderWidth > maxWidth) {
-          renderHeight *= maxWidth / renderWidth;
-          renderWidth = maxWidth;
-        }
+        const { width: renderWidth, height: renderHeight } = scaledMathDimensions(
+          viewBox[2],
+          viewBox[3],
+          fontSize,
+          maxWidth,
+        );
         svg.removeAttribute("style");
         svg.removeAttribute("role");
         svg.removeAttribute("focusable");
-        svg.setAttribute("x", String(-renderWidth / 2));
-        svg.setAttribute("y", String(-renderHeight / 2));
+        svg.setAttribute("x", String(anchor === "end" ? -renderWidth : -renderWidth / 2));
+        svg.setAttribute("y", String(verticalAnchor === "bottom" ? -renderHeight : -renderHeight / 2));
         svg.setAttribute("width", String(renderWidth));
         svg.setAttribute("height", String(renderHeight));
         svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
@@ -208,7 +212,7 @@ function MathLabel({
       }
     })();
     return () => { cancelled = true; };
-  }, [height, maxWidth, shouldTypeset, source]);
+  }, [anchor, fontSize, maxWidth, shouldTypeset, source, verticalAnchor]);
 
   const markup = renderedMath?.source === source ? renderedMath.markup : null;
   if (markup) {
@@ -228,8 +232,8 @@ function MathLabel({
       x={x}
       y={y}
       className={className}
-      textAnchor="middle"
-      dominantBaseline="central"
+      textAnchor={anchor}
+      dominantBaseline={verticalAnchor === "middle" ? "central" : "auto"}
       pointerEvents="none"
       fill="#20282e"
       fontFamily="Georgia, 'Times New Roman', serif"
@@ -277,6 +281,84 @@ function SegmentButton({ active, onClick, children }: { active: boolean; onClick
   );
 }
 
+function diamondPoints(node: VariableNode, extra = 0): string {
+  const radius = node.size / 2 + extra;
+  return [
+    `${node.x},${node.y - radius}`,
+    `${node.x + radius},${node.y}`,
+    `${node.x},${node.y + radius}`,
+    `${node.x - radius},${node.y}`,
+  ].join(" ");
+}
+
+function NodeGlyph({ node }: { node: VariableNode }) {
+  const fill = node.observed ? "#aeb9bc" : "#ffffff";
+  const radius = node.size / 2;
+  if (node.variableKind === "random") {
+    return <circle cx={node.x} cy={node.y} r={radius} fill={fill} stroke="#27313a" strokeWidth="2.2" />;
+  }
+  if (node.variableKind === "double") {
+    return (
+      <g>
+        <circle cx={node.x} cy={node.y} r={radius} fill={fill} stroke="#27313a" strokeWidth="2.2" />
+        <circle cx={node.x} cy={node.y} r={Math.max(2, radius - 6)} fill="none" stroke="#27313a" strokeWidth="1.7" />
+      </g>
+    );
+  }
+  if (node.variableKind === "diamond") {
+    return <polygon points={diamondPoints(node)} fill={fill} stroke="#27313a" strokeWidth="2.2" strokeLinejoin="round" />;
+  }
+  if (node.variableKind === "factor") {
+    return (
+      <rect
+        x={node.x - radius}
+        y={node.y - radius}
+        width={node.size}
+        height={node.size}
+        fill="#27313a"
+        stroke="#27313a"
+        strokeWidth="1"
+      />
+    );
+  }
+  return (
+    <rect
+      x={node.x - radius}
+      y={node.y - radius}
+      width={node.size}
+      height={node.size}
+      rx="2"
+      fill={fill}
+      stroke="#27313a"
+      strokeWidth="2.2"
+    />
+  );
+}
+
+function NodeSelection({ node }: { node: VariableNode }) {
+  if (node.variableKind === "random" || node.variableKind === "double") {
+    return <circle data-editor-ui="true" cx={node.x} cy={node.y} r={node.size / 2 + 3} fill="none" stroke="#0c7a84" strokeWidth="2.5" pointerEvents="none" />;
+  }
+  if (node.variableKind === "diamond") {
+    return <polygon data-editor-ui="true" points={diamondPoints(node, 4)} fill="none" stroke="#0c7a84" strokeWidth="2.5" strokeLinejoin="round" pointerEvents="none" />;
+  }
+  const extra = node.variableKind === "factor" ? 4 : 3;
+  return (
+    <rect
+      data-editor-ui="true"
+      x={node.x - node.size / 2 - extra}
+      y={node.y - node.size / 2 - extra}
+      width={node.size + extra * 2}
+      height={node.size + extra * 2}
+      rx={node.variableKind === "factor" ? 2 : 4}
+      fill="none"
+      stroke="#0c7a84"
+      strokeWidth="2.5"
+      pointerEvents="none"
+    />
+  );
+}
+
 function findGroupFor(document: DocumentV1, id: string) {
   return document.groups.find((group) => group.memberIds.includes(id));
 }
@@ -299,6 +381,7 @@ function makeElement(kind: PaletteKind, point: Point, document: DocumentV1): Pos
       width: 300,
       height: 200,
       cornerRadius: 10,
+      label: "$N$",
     };
   }
   if (kind === "text") return { id: uid("text"), type: "text", x: px, y: py, text: "$x_n$" };
@@ -308,9 +391,9 @@ function makeElement(kind: PaletteKind, point: Point, document: DocumentV1): Pos
     variableKind: kind,
     x: px,
     y: py,
-    size: 56,
+    size: kind === "factor" ? 14 : 56,
     observed: false,
-    label: kind === "random" ? "$z$" : "$f$",
+    label: kind === "factor" ? "" : kind === "random" || kind === "double" ? "$z$" : "$f$",
   };
 }
 
@@ -439,8 +522,8 @@ export default function PlateEditor() {
     }
 
     const groupIds = expandedSelection(diagram, element.id);
-    const modifier = event.metaKey || event.ctrlKey || event.shiftKey;
-    if (modifier) {
+    const toggleModifier = event.metaKey || event.ctrlKey;
+    if (toggleModifier) {
       const allSelected = groupIds.every((id) => selection.includes(id));
       setSelection((current) =>
         allSelected
@@ -450,7 +533,9 @@ export default function PlateEditor() {
       return;
     }
 
-    const nextSelection = selection.includes(element.id) ? selection : groupIds;
+    const nextSelection = event.shiftKey
+      ? [...new Set([...selection, ...groupIds])]
+      : selection.includes(element.id) ? selection : groupIds;
     setSelection(nextSelection);
     if (!isPositioned(element)) return;
     const moveIds = nextSelection.filter((id) => {
@@ -523,7 +608,7 @@ export default function PlateEditor() {
         interaction.corner,
         point.x - interaction.start.x,
         point.y - interaction.start.y,
-        diagram.canvas.snapToGrid,
+        diagram.canvas.snapToGrid && !event.shiftKey,
         diagram.canvas.gridSize,
       );
       dispatch({ type: "update", id: interaction.plate.id, patch: next });
@@ -531,7 +616,7 @@ export default function PlateEditor() {
     }
     let dx = point.x - interaction.start.x;
     let dy = point.y - interaction.start.y;
-    if (diagram.canvas.snapToGrid) {
+    if (diagram.canvas.snapToGrid && !event.shiftKey) {
       const anchor = interaction.positions[interaction.anchorId] ?? interaction.positions[interaction.ids[0]];
       if (anchor) {
         dx = snap(anchor.x + dx, diagram.canvas.gridSize) - anchor.x;
@@ -577,6 +662,7 @@ export default function PlateEditor() {
             targetId: targetElement.id,
             lineStyle: "straight",
             headStyle: "arrow",
+            label: "",
           },
         });
         setTool("select");
@@ -594,7 +680,7 @@ export default function PlateEditor() {
   const onCanvasDrop = useCallback((event: DragEvent<SVGSVGElement>) => {
     event.preventDefault();
     const kind = event.dataTransfer.getData(MIME_TYPE) as PaletteKind;
-    if (!["random", "deterministic", "plate", "text"].includes(kind)) return;
+    if (!["random", "deterministic", "double", "diamond", "factor", "plate", "text"].includes(kind)) return;
     const element = makeElement(kind, canvasPoint(event), diagram);
     dispatch({ type: "add", element });
     setSelection([element.id]);
@@ -679,6 +765,8 @@ export default function PlateEditor() {
     const mathCount = diagram.elements.filter((element) => {
       if (element.type === "variable") return hasMath(element.label) && !validateLabel(element.label);
       if (element.type === "text") return hasMath(element.text) && !validateLabel(element.text);
+      if (element.type === "plate") return hasMath(element.label ?? "") && !validateLabel(element.label ?? "");
+      if (element.type === "edge") return hasMath(element.label ?? "") && !validateLabel(element.label ?? "");
       return false;
     }).length;
     if (!mathCount) return true;
@@ -785,11 +873,14 @@ export default function PlateEditor() {
           </div>
           <div className="palette-list">
             {([
-              ["random", "Random variable", "circle"],
-              ["deterministic", "Non-random variable", "square"],
-              ["plate", "Plate", "plate"],
-              ["text", "Text / math", "text"],
-            ] as const).map(([kind, label, preview]) => (
+              ["random", "Circle node", "circle", ""],
+              ["deterministic", "Square node", "square", ""],
+              ["double", "Double circle node", "double", ""],
+              ["diamond", "Diamond node", "diamond", ""],
+              ["factor", "Factor node", "factor", "Small black square"],
+              ["plate", "Plate", "plate", ""],
+              ["text", "Text / math", "text", "Plain or $math$"],
+            ] as const).map(([kind, label, preview, description]) => (
               <button
                 key={kind}
                 type="button"
@@ -809,7 +900,7 @@ export default function PlateEditor() {
                 <span className={`element-preview preview-${preview}`} aria-hidden="true">
                   {preview === "text" ? "xₙ" : null}
                 </span>
-                <span><strong>{label}</strong><small>{kind === "random" ? "Circle node" : kind === "deterministic" ? "Square node" : kind === "plate" ? "Rounded container" : "Plain or $math$"}</small></span>
+                <span><strong>{label}</strong>{description && <small>{description}</small>}</span>
                 <span className="drag-grip" aria-hidden="true">⠿</span>
               </button>
             ))}
@@ -823,12 +914,12 @@ export default function PlateEditor() {
             aria-pressed={tool === "connect"}
           >
             <span className="connection-preview" aria-hidden="true"><i /><b>›</b></span>
-            <span><strong>Directed arrow</strong><small>Drag node to node</small></span>
+            <span><strong>Edge</strong><small>Drag node to node</small></span>
           </button>
 
           <div className="palette-tip">
             <span>Tip</span>
-            <p>Hold Shift to select several elements, or drag on empty canvas for a marquee.</p>
+            <p>Shift-click adds to selection. While Snap is on, Shift-drag moves freely.</p>
           </div>
         </aside>
 
@@ -899,6 +990,17 @@ export default function PlateEditor() {
                           pointerEvents="none"
                         />
                       )}
+                      {plate.label && (
+                        <MathLabel
+                          source={plate.label}
+                          x={plate.x + plate.width - 12}
+                          y={plate.y + plate.height - 10}
+                          maxWidth={Math.max(40, plate.width - 24)}
+                          fontSize={15}
+                          anchor="end"
+                          verticalAnchor="bottom"
+                        />
+                      )}
                     </g>
                   ))}
                 </g>
@@ -910,6 +1012,10 @@ export default function PlateEditor() {
                     const path = edge.lineStyle === "squiggly"
                       ? squigglyPath(endpoints.start, endpoints.end)
                       : straightPath(endpoints.start, endpoints.end);
+                    const markerEnd = edge.headStyle === "none"
+                      ? undefined
+                      : `url(#${edge.headStyle === "arrow" ? "arrow-head" : "bar-head"})`;
+                    const labelPoint = edgeLabelPoint(endpoints.start, endpoints.end);
                     const selected = selection.includes(edge.id);
                     return (
                       <g key={edge.id} data-element-id={edge.id} className="diagram-element edge-element">
@@ -921,7 +1027,7 @@ export default function PlateEditor() {
                           strokeWidth="2.1"
                           strokeLinecap="round"
                           strokeLinejoin="round"
-                          markerEnd={`url(#${edge.headStyle === "arrow" ? "arrow-head" : "bar-head"})`}
+                          markerEnd={markerEnd}
                           pointerEvents="none"
                         />
                         {selected && (
@@ -934,6 +1040,15 @@ export default function PlateEditor() {
                             strokeLinecap="round"
                             strokeLinejoin="round"
                             pointerEvents="none"
+                          />
+                        )}
+                        {edge.label && (
+                          <MathLabel
+                            source={edge.label}
+                            x={labelPoint.x}
+                            y={labelPoint.y}
+                            maxWidth={240}
+                            fontSize={15}
                           />
                         )}
                       </g>
@@ -989,7 +1104,7 @@ export default function PlateEditor() {
                               strokeDasharray="4 3"
                             />
                           )}
-                          <MathLabel source={element.text} x={element.x} y={element.y} maxWidth={360} height={26} fontSize={20} />
+                          <MathLabel source={element.text} x={element.x} y={element.y} maxWidth={360} fontSize={20} />
                         </g>
                       );
                     }
@@ -1001,35 +1116,22 @@ export default function PlateEditor() {
                         className="diagram-element variable-element"
                         onPointerDown={(event) => beginElementPointer(event, element)}
                       >
-                        {element.variableKind === "random" ? (
-                          <circle
-                            cx={element.x}
-                            cy={element.y}
-                            r={element.size / 2}
-                            fill={element.observed ? "#aeb9bc" : "#ffffff"}
-                            stroke="#27313a"
-                            strokeWidth="2.2"
-                          />
-                        ) : (
+                        {element.variableKind === "factor" && (
                           <rect
-                            x={element.x - element.size / 2}
-                            y={element.y - element.size / 2}
-                            width={element.size}
-                            height={element.size}
-                            rx="2"
-                            fill={element.observed ? "#aeb9bc" : "#ffffff"}
-                            stroke="#27313a"
-                            strokeWidth="2.2"
+                            data-editor-ui="true"
+                            x={element.x - 14}
+                            y={element.y - 14}
+                            width="28"
+                            height="28"
+                            fill="transparent"
+                            pointerEvents="all"
                           />
                         )}
-                        {selected && (
-                          element.variableKind === "random" ? (
-                            <circle data-editor-ui="true" cx={element.x} cy={element.y} r={element.size / 2 + 3} fill="none" stroke="#0c7a84" strokeWidth="2.5" pointerEvents="none" />
-                          ) : (
-                            <rect data-editor-ui="true" x={element.x - element.size / 2 - 3} y={element.y - element.size / 2 - 3} width={element.size + 6} height={element.size + 6} rx="4" fill="none" stroke="#0c7a84" strokeWidth="2.5" pointerEvents="none" />
-                          )
+                        <NodeGlyph node={element} />
+                        {selected && <NodeSelection node={element} />}
+                        {element.variableKind !== "factor" && element.label && (
+                          <MathLabel source={element.label} x={element.x} y={element.y} maxWidth={element.size - 12} fontSize={17} className="node-label" />
                         )}
-                        <MathLabel source={element.label} x={element.x} y={element.y} maxWidth={element.size - 12} height={22} fontSize={17} className="node-label" />
                         {tool === "connect" && (
                           <circle data-editor-ui="true" cx={element.x} cy={element.y} r={element.size / 2 + 7} fill="none" stroke="#0c7a84" strokeWidth="2" strokeDasharray="3 4" pointerEvents="none" />
                         )}
@@ -1084,8 +1186,8 @@ export default function PlateEditor() {
             </div>
           </div>
           <div className="canvas-legend">
-            <span><i className="legend-circle" /> Random</span>
-            <span><i className="legend-square" /> Non-random</span>
+            <span><i className="legend-circle" /> Circle</span>
+            <span><i className="legend-square" /> Square</span>
             <span><i className="legend-observed" /> Known value</span>
           </div>
         </section>
@@ -1148,29 +1250,46 @@ function ElementInspector({
 }) {
   if (element.type === "variable") {
     const labelError = validateLabel(element.label);
+    const setNodeKind = (kind: VariableKind) => {
+      const leavingFactor = element.variableKind === "factor" && kind !== "factor";
+      const defaultLabel = kind === "random" || kind === "double" ? "$z$" : "$f$";
+      onUpdate(element.id, {
+        variableKind: kind,
+        size: kind === "factor" ? 14 : leavingFactor ? 56 : element.size,
+        observed: kind === "factor" ? false : element.observed,
+        label: kind === "factor" ? "" : element.label || defaultLabel,
+      });
+    };
     return (
       <div className="inspector-content">
         <div className="field-group">
-          <label>Variable type</label>
-          <div className="segment-control">
-            <SegmentButton active={element.variableKind === "random"} onClick={() => onUpdate(element.id, { variableKind: "random" })}>Random</SegmentButton>
-            <SegmentButton active={element.variableKind === "deterministic"} onClick={() => onUpdate(element.id, { variableKind: "deterministic" })}>Non-random</SegmentButton>
+          <label>Node type</label>
+          <div className="segment-control node-shape-control">
+            <SegmentButton active={element.variableKind === "random"} onClick={() => setNodeKind("random")}>Circle</SegmentButton>
+            <SegmentButton active={element.variableKind === "deterministic"} onClick={() => setNodeKind("deterministic")}>Square</SegmentButton>
+            <SegmentButton active={element.variableKind === "double"} onClick={() => setNodeKind("double")}>Double</SegmentButton>
+            <SegmentButton active={element.variableKind === "diamond"} onClick={() => setNodeKind("diamond")}>Diamond</SegmentButton>
+            <SegmentButton active={element.variableKind === "factor"} onClick={() => setNodeKind("factor")}>Factor</SegmentButton>
           </div>
         </div>
-        <div className="field-group">
-          <label htmlFor="node-label">Label</label>
-          <textarea id="node-label" value={element.label} onChange={(event) => onUpdate(element.id, { label: event.target.value })} rows={3} spellCheck={false} />
-          <p className={`field-help${labelError ? " is-error" : ""}`}>{labelError ?? "Wrap math in dollar signs, for example $x_n$ or $\\boldsymbol{\\theta}$."}</p>
-        </div>
-        <div className="field-group">
-          <label>Value state</label>
-          <div className="segment-control">
-            <SegmentButton active={!element.observed} onClick={() => onUpdate(element.id, { observed: false })}>Unknown</SegmentButton>
-            <SegmentButton active={element.observed} onClick={() => onUpdate(element.id, { observed: true })}>Known</SegmentButton>
-          </div>
-        </div>
+        {element.variableKind !== "factor" && (
+          <>
+            <div className="field-group">
+              <label htmlFor="node-label">Label</label>
+              <textarea id="node-label" value={element.label} onChange={(event) => onUpdate(element.id, { label: event.target.value })} rows={3} spellCheck={false} />
+              <p className={`field-help${labelError ? " is-error" : ""}`}>{labelError ?? "Wrap math in dollar signs, for example $x_n$ or $\\boldsymbol{\\theta}$."}</p>
+            </div>
+            <div className="field-group">
+              <label>Value state</label>
+              <div className="segment-control">
+                <SegmentButton active={!element.observed} onClick={() => onUpdate(element.id, { observed: false })}>Unknown</SegmentButton>
+                <SegmentButton active={element.observed} onClick={() => onUpdate(element.id, { observed: true })}>Known</SegmentButton>
+              </div>
+            </div>
+          </>
+        )}
         <PositionFields element={element} onUpdate={onUpdate} />
-        <button type="button" className="danger-wide-button" onClick={onDelete}>Delete variable</button>
+        <button type="button" className="danger-wide-button" onClick={onDelete}>Delete node</button>
       </div>
     );
   }
@@ -1191,8 +1310,14 @@ function ElementInspector({
   }
 
   if (element.type === "plate") {
+    const labelError = validateLabel(element.label ?? "");
     return (
       <div className="inspector-content">
+        <div className="field-group">
+          <label htmlFor="plate-label">Plate label</label>
+          <textarea id="plate-label" value={element.label ?? ""} onChange={(event) => onUpdate(element.id, { label: event.target.value })} rows={3} spellCheck={false} />
+          <p className={`field-help${labelError ? " is-error" : ""}`}>{labelError ?? "The label stays attached to the bottom-right corner of the plate."}</p>
+        </div>
         <div className="field-group">
           <label>Dimensions</label>
           <div className="two-fields">
@@ -1201,7 +1326,11 @@ function ElementInspector({
           </div>
         </div>
         <div className="field-group">
-          <NumberField label="Corner radius" value={element.cornerRadius} min={0} max={40} onChange={(value) => onUpdate(element.id, { cornerRadius: value })} />
+          <label>Corners</label>
+          <div className="segment-control">
+            <SegmentButton active={element.cornerRadius === 0} onClick={() => onUpdate(element.id, { cornerRadius: 0 })}>Square</SegmentButton>
+            <SegmentButton active={element.cornerRadius > 0} onClick={() => onUpdate(element.id, { cornerRadius: 10 })}>Rounded</SegmentButton>
+          </div>
         </div>
         <PositionFields element={element} onUpdate={onUpdate} />
         <p className="inspector-note">Plates stay behind other elements. Group a plate with its contents when you want them to move together.</p>
@@ -1212,10 +1341,16 @@ function ElementInspector({
 
   const source = diagram.elements.find((item): item is VariableNode => item.id === element.sourceId && item.type === "variable");
   const target = diagram.elements.find((item): item is VariableNode => item.id === element.targetId && item.type === "variable");
+  const labelError = validateLabel(element.label ?? "");
   return (
     <div className="inspector-content">
       <div className="connection-summary">
-        <span>{plainLabel(source?.label ?? "Source")}</span><b>→</b><span>{plainLabel(target?.label ?? "Target")}</span>
+        <span>{plainLabel(source?.label || "Source")}</span><b>{element.headStyle === "none" ? "—" : element.headStyle === "bar" ? "⊣" : "→"}</b><span>{plainLabel(target?.label || "Target")}</span>
+      </div>
+      <div className="field-group">
+        <label htmlFor="edge-label">Edge label</label>
+        <textarea id="edge-label" value={element.label ?? ""} onChange={(event) => onUpdate(element.id, { label: event.target.value })} rows={3} spellCheck={false} />
+        <p className={`field-help${labelError ? " is-error" : ""}`}>{labelError ?? "The label follows the midpoint of the edge; $TeX$ is supported."}</p>
       </div>
       <div className="field-group">
         <label>Line</label>
@@ -1226,9 +1361,10 @@ function ElementInspector({
       </div>
       <div className="field-group">
         <label>Target head</label>
-        <div className="segment-control">
+        <div className="segment-control segment-control-three">
           <SegmentButton active={element.headStyle === "arrow"} onClick={() => onUpdate(element.id, { headStyle: "arrow" })}>Arrow</SegmentButton>
           <SegmentButton active={element.headStyle === "bar"} onClick={() => onUpdate(element.id, { headStyle: "bar" })}>Switch bar</SegmentButton>
+          <SegmentButton active={element.headStyle === "none"} onClick={() => onUpdate(element.id, { headStyle: "none" })}>None</SegmentButton>
         </div>
       </div>
       <button type="button" className="danger-wide-button" onClick={onDelete}>Delete connection</button>

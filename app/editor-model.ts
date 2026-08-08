@@ -2,9 +2,9 @@ export const CANVAS_WIDTH = 1200;
 export const CANVAS_HEIGHT = 800;
 export const GRID_SIZE = 20;
 
-export type VariableKind = "random" | "deterministic";
+export type VariableKind = "random" | "deterministic" | "double" | "diamond" | "factor";
 export type LineStyle = "straight" | "squiggly";
-export type HeadStyle = "arrow" | "bar";
+export type HeadStyle = "arrow" | "bar" | "none";
 
 export interface CanvasSettings {
   width: number;
@@ -41,6 +41,7 @@ export interface Plate {
   width: number;
   height: number;
   cornerRadius: number;
+  label?: string;
 }
 
 export interface Edge {
@@ -50,6 +51,7 @@ export interface Edge {
   targetId: string;
   lineStyle: LineStyle;
   headStyle: HeadStyle;
+  label?: string;
 }
 
 export type PositionedElement = VariableNode | TextNode | Plate;
@@ -111,6 +113,7 @@ export function sampleDocument(): DocumentV1 {
         width: 520,
         height: 340,
         cornerRadius: 10,
+        label: "$n = 1, \\ldots, N$",
       },
       {
         id: "node-theta",
@@ -139,13 +142,7 @@ export function sampleDocument(): DocumentV1 {
         targetId: "node-x",
         lineStyle: "straight",
         headStyle: "arrow",
-      },
-      {
-        id: "text-sample",
-        type: "text",
-        x: 760,
-        y: 500,
-        text: "$n = 1, \\ldots, N$",
+        label: "",
       },
     ],
     groups: [],
@@ -275,7 +272,7 @@ export function validateDocument(value: unknown): { ok: true; document: Document
     const item = raw as Record<string, unknown>;
     if (item.type === "variable") {
       if (
-        !["random", "deterministic"].includes(String(item.variableKind)) ||
+        !["random", "deterministic", "double", "diamond", "factor"].includes(String(item.variableKind)) ||
         !finiteNumber(item.x) || !finiteNumber(item.y) || !finiteNumber(item.size) ||
         typeof item.observed !== "boolean" || typeof item.label !== "string"
       ) return { ok: false, error: `Variable ${item.id} is invalid.` };
@@ -286,13 +283,15 @@ export function validateDocument(value: unknown): { ok: true; document: Document
     } else if (item.type === "plate") {
       if (
         !finiteNumber(item.x) || !finiteNumber(item.y) || !finiteNumber(item.width) ||
-        !finiteNumber(item.height) || !finiteNumber(item.cornerRadius)
+        !finiteNumber(item.height) || !finiteNumber(item.cornerRadius) ||
+        (item.label !== undefined && typeof item.label !== "string")
       ) return { ok: false, error: `Plate ${item.id} is invalid.` };
     } else if (item.type === "edge") {
       if (
         typeof item.sourceId !== "string" || typeof item.targetId !== "string" ||
         item.sourceId === item.targetId || !["straight", "squiggly"].includes(String(item.lineStyle)) ||
-        !["arrow", "bar"].includes(String(item.headStyle))
+        !["arrow", "bar", "none"].includes(String(item.headStyle)) ||
+        (item.label !== undefined && typeof item.label !== "string")
       ) return { ok: false, error: `Connection ${item.id} is invalid.` };
     } else {
       return { ok: false, error: `Unknown element type: ${String(item.type)}.` };

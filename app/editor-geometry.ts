@@ -2,6 +2,7 @@ import type { DiagramElement, DocumentV1, Edge, Plate, PositionedElement, Variab
 
 export interface Point { x: number; y: number }
 export interface Bounds { x: number; y: number; width: number; height: number }
+export const BAR_HEAD_GAP = 9;
 
 export function snap(value: number, gridSize = 20): number {
   return Math.round(value / gridSize) * gridSize;
@@ -12,9 +13,13 @@ export function variableBoundaryPoint(node: VariableNode, toward: Point): Point 
   const dy = toward.y - node.y;
   if (dx === 0 && dy === 0) return { x: node.x, y: node.y };
   const radius = node.size / 2;
-  if (node.variableKind === "random") {
+  if (node.variableKind === "random" || node.variableKind === "double") {
     const distance = Math.hypot(dx, dy);
     return { x: node.x + (dx / distance) * radius, y: node.y + (dy / distance) * radius };
+  }
+  if (node.variableKind === "diamond") {
+    const scale = radius / (Math.abs(dx) + Math.abs(dy));
+    return { x: node.x + dx * scale, y: node.y + dy * scale };
   }
   const scale = radius / Math.max(Math.abs(dx), Math.abs(dy));
   return { x: node.x + dx * scale, y: node.y + dy * scale };
@@ -24,9 +29,20 @@ export function edgeEndpoints(edge: Edge, document: DocumentV1): { start: Point;
   const source = document.elements.find((item): item is VariableNode => item.id === edge.sourceId && item.type === "variable");
   const target = document.elements.find((item): item is VariableNode => item.id === edge.targetId && item.type === "variable");
   if (!source || !target) return null;
+  const start = variableBoundaryPoint(source, target);
+  const boundaryEnd = variableBoundaryPoint(target, source);
+  if (edge.headStyle !== "bar") return { start, end: boundaryEnd };
+  const dx = source.x - boundaryEnd.x;
+  const dy = source.y - boundaryEnd.y;
+  const distance = Math.hypot(dx, dy);
+  if (distance < 1) return { start, end: boundaryEnd };
+  const gap = Math.min(BAR_HEAD_GAP, distance / 3);
   return {
-    start: variableBoundaryPoint(source, target),
-    end: variableBoundaryPoint(target, source),
+    start,
+    end: {
+      x: boundaryEnd.x + (dx / distance) * gap,
+      y: boundaryEnd.y + (dy / distance) * gap,
+    },
   };
 }
 
@@ -34,7 +50,18 @@ export function straightPath(start: Point, end: Point): string {
   return `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
 }
 
-export function squigglyPath(start: Point, end: Point, amplitude = 5, wavelength = 18): string {
+function localPoint(start: Point, ux: number, uy: number, nx: number, ny: number, along: number, across: number): Point {
+  return {
+    x: start.x + ux * along + nx * across,
+    y: start.y + uy * along + ny * across,
+  };
+}
+
+function pathPoint(point: Point): string {
+  return `${point.x.toFixed(2)} ${point.y.toFixed(2)}`;
+}
+
+export function squigglyPath(start: Point, end: Point, amplitude = 5, wavelength = 24): string {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
   const length = Math.hypot(dx, dy);
@@ -43,17 +70,54 @@ export function squigglyPath(start: Point, end: Point, amplitude = 5, wavelength
   const uy = dy / length;
   const nx = -uy;
   const ny = ux;
-  const steps = Math.max(8, Math.ceil(length / 6));
-  const points = Array.from({ length: steps + 1 }, (_, index) => {
-    const distance = (length * index) / steps;
-    const envelope = Math.sin((Math.PI * distance) / length);
-    const offset = Math.sin((distance / wavelength) * Math.PI * 2) * amplitude * envelope;
-    return {
-      x: start.x + ux * distance + nx * offset,
-      y: start.y + uy * distance + ny * offset,
-    };
-  });
-  return points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(" ");
+  const halfWaves = Math.max(2, Math.round(length / (wavelength / 2)));
+  const halfWave = length / halfWaves;
+  const commands = [`M ${pathPoint(start)}`];
+  for (let index = 0; index < halfWaves; index += 1) {
+    const from = index * halfWave;
+    const to = (index + 1) * halfWave;
+    const sign = index % 2 === 0 ? 1 : -1;
+    const controlOffset = sign * amplitude * (4 / 3);
+    const control1 = localPoint(start, ux, uy, nx, ny, from + halfWave / 3, controlOffset);
+    const control2 = localPoint(start, ux, uy, nx, ny, from + (halfWave * 2) / 3, controlOffset);
+    const destination = localPoint(start, ux, uy, nx, ny, to, 0);
+    commands.push(`C ${pathPoint(control1)} ${pathPoint(control2)} ${pathPoint(destination)}`);
+  }
+  return commands.join(" ");
+}
+
+export function edgeLabelPoint(start: Point, end: Point, offset = 14): Point {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy);
+  if (length < 1) return { ...start };
+  let nx = -dy / length;
+  let ny = dx / length;
+  if (ny > 0 || (ny === 0 && nx > 0)) {
+    nx *= -1;
+    ny *= -1;
+  }
+  return {
+    x: (start.x + end.x) / 2 + nx * offset,
+    y: (start.y + end.y) / 2 + ny * offset,
+  };
+}
+
+export function scaledMathDimensions(
+  viewBoxWidth: number,
+  viewBoxHeight: number,
+  fontSize: number,
+  maxWidth: number,
+): { width: number; height: number } {
+  const emScale = fontSize / 1000;
+  let width = Math.max(1, viewBoxWidth) * emScale;
+  let height = Math.max(1, viewBoxHeight) * emScale;
+  if (width > maxWidth) {
+    const fitScale = maxWidth / width;
+    width = maxWidth;
+    height *= fitScale;
+  }
+  return { width, height };
 }
 
 export function elementBounds(element: DiagramElement): Bounds | null {
@@ -71,7 +135,27 @@ export function boundsIntersect(a: Bounds, b: Bounds): boolean {
 }
 
 export function contentBounds(document: DocumentV1, padding = 24): Bounds {
-  const bounds = document.elements.map(elementBounds).filter((item): item is Bounds => Boolean(item));
+  const bounds = document.elements.flatMap((element): Bounds[] => {
+    const positioned = elementBounds(element);
+    if (positioned) return [positioned];
+    if (element.type !== "edge") return [];
+    const endpoints = edgeEndpoints(element, document);
+    if (!endpoints) return [];
+    const labelPoint = edgeLabelPoint(endpoints.start, endpoints.end);
+    const labelWidth = element.label ? Math.max(34, element.label.replace(/\\./g, "x").length * 7.5) : 0;
+    const minX = Math.min(endpoints.start.x, endpoints.end.x) - 8;
+    const minY = Math.min(endpoints.start.y, endpoints.end.y) - 8;
+    const maxX = Math.max(endpoints.start.x, endpoints.end.x) + 8;
+    const maxY = Math.max(endpoints.start.y, endpoints.end.y) + 8;
+    const pathBounds = { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+    if (!labelWidth) return [pathBounds];
+    const labelBounds = { x: labelPoint.x - labelWidth / 2, y: labelPoint.y - 16, width: labelWidth, height: 32 };
+    const x = Math.min(pathBounds.x, labelBounds.x);
+    const y = Math.min(pathBounds.y, labelBounds.y);
+    const right = Math.max(pathBounds.x + pathBounds.width, labelBounds.x + labelBounds.width);
+    const bottom = Math.max(pathBounds.y + pathBounds.height, labelBounds.y + labelBounds.height);
+    return [{ x, y, width: right - x, height: bottom - y }];
+  });
   if (!bounds.length) return { x: 0, y: 0, width: document.canvas.width, height: document.canvas.height };
   const minX = Math.min(...bounds.map((item) => item.x)) - padding;
   const minY = Math.min(...bounds.map((item) => item.y)) - padding;
@@ -108,4 +192,3 @@ export function resizePlate(
   }
   return { x: left, y: top, width: right - left, height: bottom - top };
 }
-

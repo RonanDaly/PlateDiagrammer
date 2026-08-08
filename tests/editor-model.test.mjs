@@ -9,8 +9,11 @@ import {
   validateLabel,
 } from "../app/editor-model.ts";
 import {
+  BAR_HEAD_GAP,
+  edgeLabelPoint,
   edgeEndpoints,
   resizePlate,
+  scaledMathDimensions,
   snap,
   squigglyPath,
   variableBoundaryPoint,
@@ -30,14 +33,20 @@ test("snaps values and plate resize handles to the grid", () => {
   assert.deepEqual(resized, { x: 20, y: 20, width: 120, height: 100 });
 });
 
-test("finds circle and square boundary intersections", () => {
+test("finds circle, square, diamond, double-circle, and factor boundary intersections", () => {
   const circle = { id: "a", type: "variable", variableKind: "random", x: 100, y: 100, size: 40, observed: false, label: "$a$" };
   const square = { ...circle, id: "b", variableKind: "deterministic" };
+  const double = { ...circle, id: "c", variableKind: "double" };
+  const diamond = { ...circle, id: "d", variableKind: "diamond" };
+  const factor = { ...circle, id: "e", variableKind: "factor", size: 14, label: "" };
   assert.deepEqual(variableBoundaryPoint(circle, { x: 200, y: 100 }), { x: 120, y: 100 });
   assert.deepEqual(variableBoundaryPoint(square, { x: 200, y: 200 }), { x: 120, y: 120 });
+  assert.deepEqual(variableBoundaryPoint(double, { x: 200, y: 100 }), { x: 120, y: 100 });
+  assert.deepEqual(variableBoundaryPoint(diamond, { x: 200, y: 200 }), { x: 110, y: 110 });
+  assert.deepEqual(variableBoundaryPoint(factor, { x: 200, y: 200 }), { x: 107, y: 107 });
 });
 
-test("computes attached edge endpoints and a non-linear squiggly path", () => {
+test("computes attached edge endpoints and a smooth sinusoidal path", () => {
   const document = sampleDocument();
   const edge = document.elements.find((item) => item.type === "edge");
   const endpoints = edgeEndpoints(edge, document);
@@ -45,8 +54,28 @@ test("computes attached edge endpoints and a non-linear squiggly path", () => {
   assert.ok(endpoints.start.x < endpoints.end.x);
   const path = squigglyPath(endpoints.start, endpoints.end);
   assert.match(path, /^M /);
-  assert.ok(path.split("L").length > 8);
+  assert.ok(path.split("C").length > 8);
+  assert.doesNotMatch(path, / L /);
   assert.notEqual(path, `M ${endpoints.start.x} ${endpoints.start.y} L ${endpoints.end.x} ${endpoints.end.y}`);
+});
+
+test("pulls switch bars back from the target boundary and positions attached labels", () => {
+  const document = sampleDocument();
+  const arrow = document.elements.find((item) => item.type === "edge");
+  const arrowEndpoints = edgeEndpoints(arrow, document);
+  const barEndpoints = edgeEndpoints({ ...arrow, headStyle: "bar" }, document);
+  assert.ok(arrowEndpoints && barEndpoints);
+  assert.equal(Math.round(arrowEndpoints.end.x - barEndpoints.end.x), BAR_HEAD_GAP);
+  const label = edgeLabelPoint(barEndpoints.start, barEndpoints.end);
+  assert.ok(label.y < barEndpoints.start.y);
+});
+
+test("keeps the math em scale stable when scripts make the view box taller", () => {
+  const plain = scaledMathDimensions(1000, 1000, 20, 400);
+  const scripted = scaledMathDimensions(1000, 1800, 20, 400);
+  assert.equal(plain.width, 20);
+  assert.equal(scripted.width, 20);
+  assert.equal(scripted.height, 36);
 });
 
 test("deleting a variable cascades to incident connections", () => {
@@ -82,6 +111,15 @@ test("validates safe mixed labels and converts them to TeX", () => {
 
 test("accepts valid version-one documents and rejects malformed graphs", () => {
   assert.equal(validateDocument(sampleDocument()).ok, true);
+  const extended = sampleDocument();
+  extended.elements.push({ id: "factor", type: "variable", variableKind: "factor", x: 80, y: 80, size: 14, observed: false, label: "" });
+  extended.elements.push({ id: "undirected", type: "edge", sourceId: "factor", targetId: "node-x", lineStyle: "straight", headStyle: "none", label: "$\\psi$" });
+  assert.equal(validateDocument(extended).ok, true);
+  const legacy = sampleDocument();
+  for (const element of legacy.elements) {
+    if (element.type === "plate" || element.type === "edge") delete element.label;
+  }
+  assert.equal(validateDocument(legacy).ok, true);
   assert.equal(validateDocument({ ...emptyDocument(), version: 2 }).ok, false);
   const broken = sampleDocument();
   broken.elements = broken.elements.filter((item) => item.id !== "node-x");

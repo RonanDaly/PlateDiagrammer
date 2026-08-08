@@ -20,9 +20,13 @@ test("server-renders the Plate Studio editor shell", async () => {
   assert.match(html, /<title>Plate Studio — Statistical diagram editor<\/title>/i);
   assert.match(html, /Plate Studio/);
   assert.match(html, /Statistical diagram editor/);
-  assert.match(html, /Random variable/);
+  assert.match(html, /Circle node/);
+  assert.match(html, /Square node/);
+  assert.match(html, /Double circle node/);
+  assert.match(html, /Diamond node/);
+  assert.match(html, /Factor node/);
+  assert.doesNotMatch(html, /Random variable|Non-random variable|Rounded container/);
   assert.match(html, /Save JSON/);
   assert.match(html, /Editable statistical plate diagram/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/i);
 });
-
