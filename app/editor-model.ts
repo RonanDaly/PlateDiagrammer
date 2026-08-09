@@ -2,7 +2,7 @@ export const CANVAS_WIDTH = 1200;
 export const CANVAS_HEIGHT = 800;
 export const GRID_SIZE = 20;
 
-export type VariableKind = "random" | "deterministic" | "double" | "diamond" | "factor";
+export type VariableKind = "random" | "deterministic" | "double" | "diamond" | "factor" | "small-circle";
 export type LineStyle = "straight" | "squiggly";
 export type HeadStyle = "arrow" | "bar" | "none";
 export type StrokeStyle = "solid" | "dashed";
@@ -161,8 +161,19 @@ export function isPositioned(element: DiagramElement): element is PositionedElem
   return element.type !== "edge";
 }
 
-export function displayNodeSize(node: VariableNode, fontSize = 17): number {
-  if (!node.autoFit || node.variableKind === "factor" || !node.label.trim()) return node.size;
+export interface NodeDimensions {
+  width: number;
+  height: number;
+}
+
+export function isCompactVariableKind(kind: VariableKind): boolean {
+  return kind === "factor" || kind === "small-circle";
+}
+
+export function displayNodeDimensions(node: VariableNode, fontSize = 17): NodeDimensions {
+  if (!node.autoFit || isCompactVariableKind(node.variableKind) || !node.label.trim()) {
+    return { width: node.size, height: node.size };
+  }
   const visibleLabel = node.label
     .replace(/\\(?:boldsymbol|mathbf|mathrm|mathit|text)\b/g, "")
     .replace(/\\[a-zA-Z]+/g, "M")
@@ -170,7 +181,10 @@ export function displayNodeSize(node: VariableNode, fontSize = 17): number {
     .replace(/[$^_{}]/g, "");
   const estimatedWidth = Math.max(fontSize, visibleLabel.length * fontSize * 0.58);
   const fitted = Math.ceil((estimatedWidth + 28) / 4) * 4;
-  return Math.max(node.size, Math.min(280, fitted));
+  return {
+    width: Math.max(node.size, Math.min(280, fitted)),
+    height: node.size,
+  };
 }
 
 export function documentReducer(document: DocumentV1, action: DocumentAction): DocumentV1 {
@@ -292,7 +306,7 @@ export function validateDocument(value: unknown): { ok: true; document: Document
     const item = raw as Record<string, unknown>;
     if (item.type === "variable") {
       if (
-        !["random", "deterministic", "double", "diamond", "factor"].includes(String(item.variableKind)) ||
+        !["random", "deterministic", "double", "diamond", "factor", "small-circle"].includes(String(item.variableKind)) ||
         !finiteNumber(item.x) || !finiteNumber(item.y) || !finiteNumber(item.size) ||
         typeof item.observed !== "boolean" || typeof item.label !== "string" ||
         (item.autoFit !== undefined && typeof item.autoFit !== "boolean")

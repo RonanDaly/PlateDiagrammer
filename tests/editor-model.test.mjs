@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   documentReducer,
-  displayNodeSize,
+  displayNodeDimensions,
   emptyDocument,
   labelToTex,
   sampleDocument,
@@ -12,6 +12,7 @@ import {
 import {
   BAR_HEAD_GAP,
   EDGE_LABEL_OFFSET,
+  PLATE_HIT_STROKE_WIDTH,
   edgeLabelPoint,
   edgeEndpoints,
   resizePlate,
@@ -35,17 +36,19 @@ test("snaps values and plate resize handles to the grid", () => {
   assert.deepEqual(resized, { x: 20, y: 20, width: 120, height: 100 });
 });
 
-test("finds circle, square, diamond, double-circle, and factor boundary intersections", () => {
+test("finds regular and compact node boundary intersections", () => {
   const circle = { id: "a", type: "variable", variableKind: "random", x: 100, y: 100, size: 40, observed: false, label: "$a$" };
   const square = { ...circle, id: "b", variableKind: "deterministic" };
   const double = { ...circle, id: "c", variableKind: "double" };
   const diamond = { ...circle, id: "d", variableKind: "diamond" };
   const factor = { ...circle, id: "e", variableKind: "factor", size: 14, label: "" };
+  const smallCircle = { ...circle, id: "f", variableKind: "small-circle", size: 14, label: "" };
   assert.deepEqual(variableBoundaryPoint(circle, { x: 200, y: 100 }), { x: 120, y: 100 });
   assert.deepEqual(variableBoundaryPoint(square, { x: 200, y: 200 }), { x: 120, y: 120 });
   assert.deepEqual(variableBoundaryPoint(double, { x: 200, y: 100 }), { x: 120, y: 100 });
   assert.deepEqual(variableBoundaryPoint(diamond, { x: 200, y: 200 }), { x: 110, y: 110 });
   assert.deepEqual(variableBoundaryPoint(factor, { x: 200, y: 200 }), { x: 107, y: 107 });
+  assert.deepEqual(variableBoundaryPoint(smallCircle, { x: 200, y: 100 }), { x: 107, y: 100 });
 });
 
 test("computes attached edge endpoints and a smooth sinusoidal path", () => {
@@ -73,18 +76,21 @@ test("pulls switch bars back from the target boundary and positions attached lab
   assert.ok(Math.abs((arrowEndpoints.end.x - barEndpoints.end.x) - BAR_HEAD_GAP) < 0.001);
   const label = edgeLabelPoint(barEndpoints.start, barEndpoints.end);
   assert.equal(barEndpoints.start.y - label.y, EDGE_LABEL_OFFSET);
+  assert.equal(PLATE_HIT_STROKE_WIDTH, 14);
 });
 
-test("optionally expands labelled nodes and uses the fitted boundary for edges", () => {
+test("optionally widens labelled nodes without changing their height", () => {
   const document = sampleDocument();
   const node = document.elements.find((item) => item.id === "node-x");
   node.label = "$x_{long\\_label}$";
   node.autoFit = true;
-  const fitted = displayNodeSize(node);
-  assert.ok(fitted > node.size);
+  const fitted = displayNodeDimensions(node);
+  assert.ok(fitted.width > node.size);
+  assert.equal(fitted.height, node.size);
   const edge = document.elements.find((item) => item.type === "edge");
   const endpoints = edgeEndpoints(edge, document);
-  assert.equal(endpoints.end.x, node.x - fitted / 2);
+  assert.equal(endpoints.end.x, node.x - fitted.width / 2);
+  assert.deepEqual(variableBoundaryPoint(node, { x: node.x, y: node.y + 200 }), { x: node.x, y: node.y + node.size / 2 });
 });
 
 test("keeps the math em scale stable when scripts make the view box taller", () => {
@@ -130,6 +136,7 @@ test("accepts valid version-one documents and rejects malformed graphs", () => {
   assert.equal(validateDocument(sampleDocument()).ok, true);
   const extended = sampleDocument();
   extended.elements.push({ id: "factor", type: "variable", variableKind: "factor", x: 80, y: 80, size: 14, observed: false, label: "", autoFit: false });
+  extended.elements.push({ id: "small-circle", type: "variable", variableKind: "small-circle", x: 100, y: 80, size: 14, observed: false, label: "", autoFit: false });
   extended.elements.push({ id: "undirected", type: "edge", sourceId: "factor", targetId: "node-x", lineStyle: "straight", headStyle: "none", label: "$\\psi$", strokeStyle: "dashed" });
   extended.elements.find((item) => item.type === "plate").strokeStyle = "dashed";
   assert.equal(validateDocument(extended).ok, true);

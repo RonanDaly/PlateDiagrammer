@@ -249,7 +249,9 @@ button { color: inherit; }
   border-radius: 50%;
 }
 .preview-diamond { width: 27px; height: 27px; margin: 0 4px; transform: rotate(45deg); }
-.preview-factor { width: 14px; height: 14px; margin: 0 11px; border: 0; background: #27313a; }
+.preview-small-square,
+.preview-small-circle { width: 14px; height: 14px; margin: 0 11px; border: 0; background: #27313a; }
+.preview-small-circle { border-radius: 50%; }
 .preview-plate { height: 28px; border-radius: 6px; }
 .preview-text { border-color: transparent; font-size: 17px; }
 

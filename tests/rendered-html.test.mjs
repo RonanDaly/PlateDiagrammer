@@ -24,8 +24,9 @@ test("server-renders the Plate Studio editor shell", async () => {
   assert.match(html, /Square node/);
   assert.match(html, /Double circle node/);
   assert.match(html, /Diamond node/);
-  assert.match(html, /Factor node/);
-  assert.doesNotMatch(html, /Random variable|Non-random variable|Rounded container/);
+  assert.match(html, /Small square node/);
+  assert.match(html, /Small circle node/);
+  assert.doesNotMatch(html, /Random variable|Non-random variable|Rounded container|Factor node|Small black square/);
   assert.match(html, /Save JSON/);
   assert.match(html, /Editable statistical plate diagram/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/i);

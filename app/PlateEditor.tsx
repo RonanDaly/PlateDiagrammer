@@ -15,9 +15,10 @@ import {
 import {
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
-  displayNodeSize,
+  displayNodeDimensions,
   documentReducer,
   emptyDocument,
+  isCompactVariableKind,
   isPositioned,
   labelToTex,
   sampleDocument,
@@ -38,6 +39,7 @@ import {
   edgeLabelPoint,
   edgeEndpoints,
   elementBounds,
+  PLATE_HIT_STROKE_WIDTH,
   resizePlate,
   scaledMathDimensions,
   snap,
@@ -273,27 +275,30 @@ function SegmentButton({ active, onClick, children }: { active: boolean; onClick
 }
 
 function diamondPoints(node: VariableNode, extra = 0): string {
-  const radius = displayNodeSize(node) / 2 + extra;
+  const dimensions = displayNodeDimensions(node);
+  const radiusX = dimensions.width / 2 + extra;
+  const radiusY = dimensions.height / 2 + extra;
   return [
-    `${node.x},${node.y - radius}`,
-    `${node.x + radius},${node.y}`,
-    `${node.x},${node.y + radius}`,
-    `${node.x - radius},${node.y}`,
+    `${node.x},${node.y - radiusY}`,
+    `${node.x + radiusX},${node.y}`,
+    `${node.x},${node.y + radiusY}`,
+    `${node.x - radiusX},${node.y}`,
   ].join(" ");
 }
 
 function NodeGlyph({ node }: { node: VariableNode }) {
   const fill = node.observed ? "#aeb9bc" : "#ffffff";
-  const size = displayNodeSize(node);
-  const radius = size / 2;
+  const dimensions = displayNodeDimensions(node);
+  const radiusX = dimensions.width / 2;
+  const radiusY = dimensions.height / 2;
   if (node.variableKind === "random") {
-    return <circle cx={node.x} cy={node.y} r={radius} fill={fill} stroke="#27313a" strokeWidth="2.2" />;
+    return <ellipse cx={node.x} cy={node.y} rx={radiusX} ry={radiusY} fill={fill} stroke="#27313a" strokeWidth="2.2" />;
   }
   if (node.variableKind === "double") {
     return (
       <g>
-        <circle cx={node.x} cy={node.y} r={radius} fill={fill} stroke="#27313a" strokeWidth="2.2" />
-        <circle cx={node.x} cy={node.y} r={Math.max(2, radius - 6)} fill="none" stroke="#27313a" strokeWidth="1.7" />
+        <ellipse cx={node.x} cy={node.y} rx={radiusX} ry={radiusY} fill={fill} stroke="#27313a" strokeWidth="2.2" />
+        <ellipse cx={node.x} cy={node.y} rx={Math.max(2, radiusX - 6)} ry={Math.max(2, radiusY - 6)} fill="none" stroke="#27313a" strokeWidth="1.7" />
       </g>
     );
   }
@@ -303,22 +308,25 @@ function NodeGlyph({ node }: { node: VariableNode }) {
   if (node.variableKind === "factor") {
     return (
       <rect
-        x={node.x - radius}
-        y={node.y - radius}
-        width={size}
-        height={size}
+        x={node.x - radiusX}
+        y={node.y - radiusY}
+        width={dimensions.width}
+        height={dimensions.height}
         fill="#27313a"
         stroke="#27313a"
         strokeWidth="1"
       />
     );
   }
+  if (node.variableKind === "small-circle") {
+    return <circle cx={node.x} cy={node.y} r={radiusX} fill="#27313a" stroke="#27313a" strokeWidth="1" />;
+  }
   return (
     <rect
-      x={node.x - radius}
-      y={node.y - radius}
-      width={size}
-      height={size}
+      x={node.x - radiusX}
+      y={node.y - radiusY}
+      width={dimensions.width}
+      height={dimensions.height}
       rx="2"
       fill={fill}
       stroke="#27313a"
@@ -328,9 +336,10 @@ function NodeGlyph({ node }: { node: VariableNode }) {
 }
 
 function NodeSelection({ node }: { node: VariableNode }) {
-  const size = displayNodeSize(node);
-  if (node.variableKind === "random" || node.variableKind === "double") {
-    return <circle data-editor-ui="true" cx={node.x} cy={node.y} r={size / 2 + 3} fill="none" stroke="#0c7a84" strokeWidth="2.5" pointerEvents="none" />;
+  const dimensions = displayNodeDimensions(node);
+  if (node.variableKind === "random" || node.variableKind === "double" || node.variableKind === "small-circle") {
+    const extra = node.variableKind === "small-circle" ? 4 : 3;
+    return <ellipse data-editor-ui="true" cx={node.x} cy={node.y} rx={dimensions.width / 2 + extra} ry={dimensions.height / 2 + extra} fill="none" stroke="#0c7a84" strokeWidth="2.5" pointerEvents="none" />;
   }
   if (node.variableKind === "diamond") {
     return <polygon data-editor-ui="true" points={diamondPoints(node, 4)} fill="none" stroke="#0c7a84" strokeWidth="2.5" strokeLinejoin="round" pointerEvents="none" />;
@@ -339,10 +348,10 @@ function NodeSelection({ node }: { node: VariableNode }) {
   return (
     <rect
       data-editor-ui="true"
-      x={node.x - size / 2 - extra}
-      y={node.y - size / 2 - extra}
-      width={size + extra * 2}
-      height={size + extra * 2}
+      x={node.x - dimensions.width / 2 - extra}
+      y={node.y - dimensions.height / 2 - extra}
+      width={dimensions.width + extra * 2}
+      height={dimensions.height + extra * 2}
       rx={node.variableKind === "factor" ? 2 : 4}
       fill="none"
       stroke="#0c7a84"
@@ -379,15 +388,16 @@ function makeElement(kind: PaletteKind, point: Point, document: DocumentV1): Pos
     };
   }
   if (kind === "text") return { id: uid("text"), type: "text", x: px, y: py, text: "$x_n$" };
+  const compact = isCompactVariableKind(kind);
   return {
     id: uid("node"),
     type: "variable",
     variableKind: kind,
     x: px,
     y: py,
-    size: kind === "factor" ? 14 : 56,
+    size: compact ? 14 : 56,
     observed: false,
-    label: kind === "factor" ? "" : kind === "random" || kind === "double" ? "$z$" : "$f$",
+    label: compact ? "" : kind === "random" || kind === "double" ? "$z$" : "$f$",
     autoFit: false,
   };
 }
@@ -678,7 +688,7 @@ export default function PlateEditor() {
   const onCanvasDrop = useCallback((event: DragEvent<SVGSVGElement>) => {
     event.preventDefault();
     const kind = event.dataTransfer.getData(MIME_TYPE) as PaletteKind;
-    if (!["random", "deterministic", "double", "diamond", "factor", "plate", "text"].includes(kind)) return;
+    if (!["random", "deterministic", "double", "diamond", "factor", "small-circle", "plate", "text"].includes(kind)) return;
     const element = makeElement(kind, canvasPoint(event), diagram);
     dispatch({ type: "add", element });
     setSelection([element.id]);
@@ -875,7 +885,8 @@ export default function PlateEditor() {
               ["deterministic", "Square node", "square", ""],
               ["double", "Double circle node", "double", ""],
               ["diamond", "Diamond node", "diamond", ""],
-              ["factor", "Factor node", "factor", "Small black square"],
+              ["factor", "Small square node", "small-square", ""],
+              ["small-circle", "Small circle node", "small-circle", ""],
               ["plate", "Plate", "plate", ""],
               ["text", "Text / math", "text", "Plain or $math$"],
             ] as const).map(([kind, label, preview, description]) => (
@@ -945,8 +956,8 @@ export default function PlateEditor() {
                   <pattern id="minor-grid" width={diagram.canvas.gridSize} height={diagram.canvas.gridSize} patternUnits="userSpaceOnUse">
                     <circle cx="1" cy="1" r="1" fill="#cbd2da" />
                   </pattern>
-                  <marker id="arrow-head" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto" markerUnits="strokeWidth">
-                    <path d="M 1 1 L 9 5.5 L 1 10" fill="none" stroke="#27313a" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                  <marker id="arrow-head" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="strokeWidth">
+                    <path d="M 0.8 0.8 L 6 3.5 L 0.8 6.2" fill="none" stroke="#27313a" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
                   </marker>
                   <marker id="bar-head" markerWidth="10" markerHeight="14" refX="5" refY="7" orient="auto" markerUnits="strokeWidth">
                     <path d="M 5 1 L 5 13" fill="none" stroke="#27313a" strokeWidth="2" strokeLinecap="round" />
@@ -964,6 +975,18 @@ export default function PlateEditor() {
                       onPointerDown={(event) => beginElementPointer(event, plate)}
                     >
                       <rect
+                        data-editor-ui="true"
+                        x={plate.x}
+                        y={plate.y}
+                        width={plate.width}
+                        height={plate.height}
+                        rx={plate.cornerRadius}
+                        fill="none"
+                        stroke="transparent"
+                        strokeWidth={PLATE_HIT_STROKE_WIDTH}
+                        pointerEvents="stroke"
+                      />
+                      <rect
                         x={plate.x}
                         y={plate.y}
                         width={plate.width}
@@ -973,7 +996,7 @@ export default function PlateEditor() {
                         stroke="#34414a"
                         strokeWidth="2"
                         strokeDasharray={plate.strokeStyle === "dashed" ? "10 7" : undefined}
-                        pointerEvents="stroke"
+                        pointerEvents="none"
                       />
                       {selection.includes(plate.id) && (
                         <rect
@@ -1116,25 +1139,37 @@ export default function PlateEditor() {
                         className="diagram-element variable-element"
                         onPointerDown={(event) => beginElementPointer(event, element)}
                       >
-                        {element.variableKind === "factor" && (
-                          <rect
-                            data-editor-ui="true"
-                            x={element.x - 14}
-                            y={element.y - 14}
-                            width="28"
-                            height="28"
-                            fill="transparent"
-                            pointerEvents="all"
-                          />
+                        {isCompactVariableKind(element.variableKind) && (
+                          element.variableKind === "small-circle" ? (
+                            <circle
+                              data-editor-ui="true"
+                              cx={element.x}
+                              cy={element.y}
+                              r="14"
+                              fill="transparent"
+                              pointerEvents="all"
+                            />
+                          ) : (
+                            <rect
+                              data-editor-ui="true"
+                              x={element.x - 14}
+                              y={element.y - 14}
+                              width="28"
+                              height="28"
+                              fill="transparent"
+                              pointerEvents="all"
+                            />
+                          )
                         )}
                         <NodeGlyph node={element} />
                         {selected && <NodeSelection node={element} />}
-                        {element.variableKind !== "factor" && element.label && (
-                          <MathLabel source={element.label} x={element.x} y={element.y} maxWidth={displayNodeSize(element) - 16} fontSize={17} className="node-label" />
+                        {!isCompactVariableKind(element.variableKind) && element.label && (
+                          <MathLabel source={element.label} x={element.x} y={element.y} maxWidth={displayNodeDimensions(element).width - 16} fontSize={17} className="node-label" />
                         )}
-                        {tool === "connect" && (
-                          <circle data-editor-ui="true" cx={element.x} cy={element.y} r={displayNodeSize(element) / 2 + 7} fill="none" stroke="#0c7a84" strokeWidth="2" strokeDasharray="3 4" pointerEvents="none" />
-                        )}
+                        {tool === "connect" && (() => {
+                          const dimensions = displayNodeDimensions(element);
+                          return <ellipse data-editor-ui="true" cx={element.x} cy={element.y} rx={dimensions.width / 2 + 7} ry={dimensions.height / 2 + 7} fill="none" stroke="#0c7a84" strokeWidth="2" strokeDasharray="3 4" pointerEvents="none" />;
+                        })()}
                       </g>
                     );
                   })}
@@ -1251,14 +1286,15 @@ function ElementInspector({
   if (element.type === "variable") {
     const labelError = validateLabel(element.label);
     const setNodeKind = (kind: VariableKind) => {
-      const leavingFactor = element.variableKind === "factor" && kind !== "factor";
+      const wasCompact = isCompactVariableKind(element.variableKind);
+      const compact = isCompactVariableKind(kind);
       const defaultLabel = kind === "random" || kind === "double" ? "$z$" : "$f$";
       onUpdate(element.id, {
         variableKind: kind,
-        size: kind === "factor" ? 14 : leavingFactor ? 56 : element.size,
-        observed: kind === "factor" ? false : element.observed,
-        label: kind === "factor" ? "" : element.label || defaultLabel,
-        autoFit: kind === "factor" ? false : element.autoFit,
+        size: compact ? 14 : wasCompact ? 56 : element.size,
+        observed: compact ? false : element.observed,
+        label: compact ? "" : element.label || defaultLabel,
+        autoFit: compact ? false : element.autoFit,
       });
     };
     return (
@@ -1270,10 +1306,11 @@ function ElementInspector({
             <SegmentButton active={element.variableKind === "deterministic"} onClick={() => setNodeKind("deterministic")}>Square</SegmentButton>
             <SegmentButton active={element.variableKind === "double"} onClick={() => setNodeKind("double")}>Double</SegmentButton>
             <SegmentButton active={element.variableKind === "diamond"} onClick={() => setNodeKind("diamond")}>Diamond</SegmentButton>
-            <SegmentButton active={element.variableKind === "factor"} onClick={() => setNodeKind("factor")}>Factor</SegmentButton>
+            <SegmentButton active={element.variableKind === "factor"} onClick={() => setNodeKind("factor")}>Small square</SegmentButton>
+            <SegmentButton active={element.variableKind === "small-circle"} onClick={() => setNodeKind("small-circle")}>Small circle</SegmentButton>
           </div>
         </div>
-        {element.variableKind !== "factor" && (
+        {!isCompactVariableKind(element.variableKind) && (
           <>
             <div className="field-group">
               <label htmlFor="node-label">Label</label>
@@ -1293,7 +1330,7 @@ function ElementInspector({
                 <SegmentButton active={!element.autoFit} onClick={() => onUpdate(element.id, { autoFit: false })}>Fixed</SegmentButton>
                 <SegmentButton active={Boolean(element.autoFit)} onClick={() => onUpdate(element.id, { autoFit: true })}>Expand</SegmentButton>
               </div>
-              <p className="field-help">Expand grows the node as needed to keep its label inside.</p>
+              <p className="field-help">Expand widens the node as needed while keeping its height fixed.</p>
             </div>
           </>
         )}

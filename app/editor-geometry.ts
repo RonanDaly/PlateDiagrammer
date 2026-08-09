@@ -1,9 +1,10 @@
-import { displayNodeSize, type DiagramElement, type DocumentV1, type Edge, type Plate, type PositionedElement, type VariableNode } from "./editor-model.ts";
+import { displayNodeDimensions, type DiagramElement, type DocumentV1, type Edge, type Plate, type PositionedElement, type VariableNode } from "./editor-model.ts";
 
 export interface Point { x: number; y: number }
 export interface Bounds { x: number; y: number; width: number; height: number }
 export const BAR_HEAD_GAP = 4.5;
 export const EDGE_LABEL_OFFSET = 26;
+export const PLATE_HIT_STROKE_WIDTH = 14;
 
 export function snap(value: number, gridSize = 20): number {
   return Math.round(value / gridSize) * gridSize;
@@ -13,16 +14,18 @@ export function variableBoundaryPoint(node: VariableNode, toward: Point): Point 
   const dx = toward.x - node.x;
   const dy = toward.y - node.y;
   if (dx === 0 && dy === 0) return { x: node.x, y: node.y };
-  const radius = displayNodeSize(node) / 2;
-  if (node.variableKind === "random" || node.variableKind === "double") {
-    const distance = Math.hypot(dx, dy);
-    return { x: node.x + (dx / distance) * radius, y: node.y + (dy / distance) * radius };
-  }
-  if (node.variableKind === "diamond") {
-    const scale = radius / (Math.abs(dx) + Math.abs(dy));
+  const dimensions = displayNodeDimensions(node);
+  const radiusX = dimensions.width / 2;
+  const radiusY = dimensions.height / 2;
+  if (node.variableKind === "random" || node.variableKind === "double" || node.variableKind === "small-circle") {
+    const scale = 1 / Math.sqrt((dx * dx) / (radiusX * radiusX) + (dy * dy) / (radiusY * radiusY));
     return { x: node.x + dx * scale, y: node.y + dy * scale };
   }
-  const scale = radius / Math.max(Math.abs(dx), Math.abs(dy));
+  if (node.variableKind === "diamond") {
+    const scale = 1 / (Math.abs(dx) / radiusX + Math.abs(dy) / radiusY);
+    return { x: node.x + dx * scale, y: node.y + dy * scale };
+  }
+  const scale = 1 / Math.max(Math.abs(dx) / radiusX, Math.abs(dy) / radiusY);
   return { x: node.x + dx * scale, y: node.y + dy * scale };
 }
 
@@ -125,8 +128,13 @@ export function scaledMathDimensions(
 export function elementBounds(element: DiagramElement): Bounds | null {
   if (element.type === "edge") return null;
   if (element.type === "variable") {
-    const size = displayNodeSize(element);
-    return { x: element.x - size / 2, y: element.y - size / 2, width: size, height: size };
+    const dimensions = displayNodeDimensions(element);
+    return {
+      x: element.x - dimensions.width / 2,
+      y: element.y - dimensions.height / 2,
+      width: dimensions.width,
+      height: dimensions.height,
+    };
   }
   if (element.type === "plate") return { x: element.x, y: element.y, width: element.width, height: element.height };
   const width = Math.max(34, element.text.replace(/\\./g, "x").length * 9.5);

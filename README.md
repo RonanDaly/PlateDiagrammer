@@ -4,11 +4,11 @@ Plate Studio is a browser-based editor for creating publication-ready statistica
 
 ## Features
 
-- Circle, square, double-circle, diamond, and compact factor nodes
+- Circle, square, double-circle, diamond, small-square, and small-circle nodes
 - Known/unknown shading and TeX-style math labels
 - Resizable square/rounded plates with solid/dashed borders and attached corner labels
 - Straight or sinusoidal, solid or dashed connections with arrow, switch-bar, or undirected ends
-- Spaced edge labels, matched plain/TeX sizing, and optional node label auto-fit
+- Compact arrowheads, spaced edge labels, matched plain/TeX sizing, and horizontal-only node label auto-fit
 - Multi-selection, flat grouping, deletion cascades, and grid snapping
 - Shift-drag snap override for precise free positioning
 - Local autosave and versioned JSON import/export
