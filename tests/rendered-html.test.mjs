@@ -26,6 +26,10 @@ test("server-renders the Plate Studio editor shell", async () => {
   assert.match(html, /Diamond node/);
   assert.match(html, /Small square node/);
   assert.match(html, /Small circle node/);
+  assert.match(html, /Canvas size/);
+  assert.match(html, /title="Edit canvas size"/);
+  assert.match(html, /value="1200"/);
+  assert.match(html, /value="800"/);
   assert.doesNotMatch(html, /Random variable|Non-random variable|Rounded container|Factor node|Small black square/);
   assert.match(html, /Save JSON/);
   assert.match(html, /Editable statistical plate diagram/);

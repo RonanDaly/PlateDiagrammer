@@ -287,6 +287,9 @@ button { color: inherit; }
 
 .canvas-meta { justify-content: space-between; border-bottom: 1px solid #d7dcdd; }
 .canvas-meta b { color: var(--ink); }
+.canvas-size-link { padding: 4px 6px; border: 0; border-radius: 5px; background: transparent; color: #69747a; cursor: pointer; font: inherit; letter-spacing: inherit; }
+.canvas-size-link:hover,
+.canvas-size-link:focus-visible { background: #e4ebea; color: var(--accent-dark); outline: none; }
 .canvas-legend { justify-content: flex-end; border-top: 1px solid #d7dcdd; }
 .canvas-legend span { display: flex; align-items: center; gap: 5px; }
 .canvas-legend i { width: 10px; height: 10px; display: inline-block; border: 1.4px solid #34414a; background: white; }
@@ -330,6 +333,9 @@ button { color: inherit; }
 .empty-inspector dl div { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid #e6e9e9; font-size: 9px; }
 .empty-inspector dt { color: #4a555b; font-weight: 650; }
 .empty-inspector dd { margin: 0; color: #8a9297; }
+.canvas-size-editor { margin: 0 0 26px; padding: 14px; border: 1px solid var(--line); border-radius: 9px; background: #f8f9f8; text-align: left; }
+.canvas-size-editor .primary-wide-button { margin-top: 10px; }
+.canvas-size-editor .field-help { margin-top: 8px; text-align: center; }
 
 .inspector-content { padding: 18px 16px 28px; }
 .field-group { margin-bottom: 20px; }

@@ -11,6 +11,7 @@ Plate Studio is a browser-based editor for creating publication-ready statistica
 - Compact arrowheads, spaced edge labels, matched plain/TeX sizing, and horizontal-only node label auto-fit
 - Multi-selection, flat grouping, deletion cascades, and grid snapping
 - Shift-drag snap override for precise free positioning
+- Editable canvas width and height stored with each document
 - Local autosave and versioned JSON import/export
 - Content-cropped SVG and 2× PNG export
 

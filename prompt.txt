@@ -8,4 +8,6 @@ Nodes should be connectable with edges that stay attached to node boundaries as 
 
 Diagram elements can be selected individually, modifier-selected, marquee-selected, moved, grouped into flat non-nested groups, ungrouped, or deleted. Moving or deleting a group affects all of its members, while connected edges continue to follow grouped nodes. Grid snapping should be available and enabled by default. While snapping is enabled, holding Shift during a drag should temporarily disable snapping for that drag without changing the global snap setting.
 
+The canvas width and height should be editable through clearly discoverable controls, with the chosen dimensions saved in the document and used consistently for the visible drawing area, grid, pointer coordinates, and empty-canvas export bounds. Resizing the canvas should preserve existing element positions, even when the canvas is made smaller than the current content.
+
 The editor should autosave committed changes locally, import and export its versioned JSON document format safely, and export clean content-cropped SVG and high-resolution PNG diagrams without the editing grid or selection UI.

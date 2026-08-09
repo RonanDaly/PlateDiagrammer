@@ -5,6 +5,9 @@ import {
   displayNodeDimensions,
   emptyDocument,
   labelToTex,
+  MAX_CANVAS_SIZE,
+  MIN_CANVAS_SIZE,
+  normalizeCanvasSize,
   sampleDocument,
   validateDocument,
   validateLabel,
@@ -34,6 +37,17 @@ test("snaps values and plate resize handles to the grid", () => {
     20,
   );
   assert.deepEqual(resized, { x: 20, y: 20, width: 120, height: 100 });
+});
+
+test("changes canvas dimensions without moving diagram elements", () => {
+  assert.equal(normalizeCanvasSize(150), MIN_CANVAS_SIZE);
+  assert.equal(normalizeCanvasSize(6000), MAX_CANVAS_SIZE);
+  const document = sampleDocument();
+  const before = document.elements.map((element) => ({ id: element.id, x: element.x, y: element.y }));
+  const resized = documentReducer(document, { type: "setCanvasSize", width: 1680, height: 960 });
+  assert.equal(resized.canvas.width, 1680);
+  assert.equal(resized.canvas.height, 960);
+  assert.deepEqual(resized.elements.map((element) => ({ id: element.id, x: element.x, y: element.y })), before);
 });
 
 test("finds regular and compact node boundary intersections", () => {
@@ -145,6 +159,7 @@ test("accepts valid version-one documents and rejects malformed graphs", () => {
     if (element.type === "plate" || element.type === "edge") delete element.label;
   }
   assert.equal(validateDocument(legacy).ok, true);
+  assert.equal(validateDocument({ ...sampleDocument(), canvas: { ...sampleDocument().canvas, width: 100 } }).ok, false);
   assert.equal(validateDocument({ ...emptyDocument(), version: 2 }).ok, false);
   const broken = sampleDocument();
   broken.elements = broken.elements.filter((item) => item.id !== "node-x");

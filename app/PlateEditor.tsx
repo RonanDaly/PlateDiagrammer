@@ -13,8 +13,8 @@ import {
   type ReactNode,
 } from "react";
 import {
-  CANVAS_HEIGHT,
-  CANVAS_WIDTH,
+  MAX_CANVAS_SIZE,
+  MIN_CANVAS_SIZE,
   displayNodeDimensions,
   documentReducer,
   emptyDocument,
@@ -507,10 +507,10 @@ export default function PlateEditor() {
     if (!svg) return { x: 0, y: 0 };
     const rect = svg.getBoundingClientRect();
     return {
-      x: ((event.clientX - rect.left) / rect.width) * CANVAS_WIDTH,
-      y: ((event.clientY - rect.top) / rect.height) * CANVAS_HEIGHT,
+      x: ((event.clientX - rect.left) / rect.width) * diagram.canvas.width,
+      y: ((event.clientY - rect.top) / rect.height) * diagram.canvas.height,
     };
-  }, []);
+  }, [diagram.canvas.height, diagram.canvas.width]);
 
   const beginElementPointer = useCallback((event: ReactPointerEvent<SVGGElement | SVGPathElement>, element: DiagramElement) => {
     event.stopPropagation();
@@ -935,14 +935,17 @@ export default function PlateEditor() {
         <section className={`canvas-panel tool-${tool}`} aria-label="Diagram canvas workspace">
           <div className="canvas-meta">
             <span><b>{diagram.elements.filter((item) => item.type !== "edge").length}</b> elements</span>
-            <span>{CANVAS_WIDTH} × {CANVAS_HEIGHT}</span>
+            <button type="button" className="canvas-size-link" onClick={() => setSelection([])} title="Edit canvas size">
+              {diagram.canvas.width} × {diagram.canvas.height}
+            </button>
           </div>
           <div className="canvas-scroll">
-            <div className="canvas-stage">
+            <div className="canvas-stage" style={{ width: diagram.canvas.width, height: diagram.canvas.height }}>
               <svg
                 ref={canvasRef}
                 id="diagram-canvas"
-                viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`}
+                viewBox={`0 0 ${diagram.canvas.width} ${diagram.canvas.height}`}
+                style={{ width: diagram.canvas.width, height: diagram.canvas.height }}
                 role="application"
                 aria-label="Editable statistical plate diagram"
                 onPointerDown={onCanvasPointerDown}
@@ -963,8 +966,8 @@ export default function PlateEditor() {
                     <path d="M 5 1 L 5 13" fill="none" stroke="#27313a" strokeWidth="2" strokeLinecap="round" />
                   </marker>
                 </defs>
-                <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="#ffffff" />
-                <rect data-editor-ui="true" width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="url(#minor-grid)" />
+                <rect width={diagram.canvas.width} height={diagram.canvas.height} fill="#ffffff" />
+                <rect data-editor-ui="true" width={diagram.canvas.width} height={diagram.canvas.height} fill="url(#minor-grid)" />
 
                 <g className="plate-layer">
                   {plates.map((plate) => (
@@ -1235,12 +1238,18 @@ export default function PlateEditor() {
           {selectedElements.length === 0 ? (
             <div className="empty-inspector">
               <span className="empty-inspector-icon" aria-hidden="true">◎</span>
-              <h2>Select an element</h2>
-              <p>Choose a node, arrow, plate, or text label to edit its properties.</p>
+              <h2>Canvas size</h2>
+              <p>Set the dimensions of the drawing area. Existing elements keep their positions.</p>
+              <CanvasSizeControls
+                key={`${diagram.canvas.width}x${diagram.canvas.height}`}
+                width={diagram.canvas.width}
+                height={diagram.canvas.height}
+                onApply={(width, height) => dispatch({ type: "setCanvasSize", width, height })}
+              />
               <dl>
+                <div><dt>Select an element</dt><dd>Edit properties</dd></div>
                 <div><dt>Shift + click</dt><dd>Add to selection</dd></div>
                 <div><dt>Delete</dt><dd>Remove selection</dd></div>
-                <div><dt>Esc</dt><dd>Cancel connection</dd></div>
               </dl>
             </div>
           ) : selectedElements.length > 1 ? (
@@ -1447,6 +1456,64 @@ function PositionFields({
         <NumberField label="Y" value={element.y} onChange={(value) => onUpdate(element.id, { y: value })} />
       </div>
     </div>
+  );
+}
+
+function CanvasSizeControls({
+  width,
+  height,
+  onApply,
+}: {
+  width: number;
+  height: number;
+  onApply: (width: number, height: number) => void;
+}) {
+  const [draftWidth, setDraftWidth] = useState(String(width));
+  const [draftHeight, setDraftHeight] = useState(String(height));
+
+  const nextWidth = Number(draftWidth);
+  const nextHeight = Number(draftHeight);
+  const valid = Number.isInteger(nextWidth) && Number.isInteger(nextHeight) &&
+    nextWidth >= MIN_CANVAS_SIZE && nextWidth <= MAX_CANVAS_SIZE &&
+    nextHeight >= MIN_CANVAS_SIZE && nextHeight <= MAX_CANVAS_SIZE;
+
+  return (
+    <form
+      className="canvas-size-editor"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (valid) onApply(nextWidth, nextHeight);
+      }}
+    >
+      <div className="two-fields">
+        <label className="number-field">
+          <span>Width</span>
+          <input
+            type="number"
+            min={MIN_CANVAS_SIZE}
+            max={MAX_CANVAS_SIZE}
+            step="20"
+            value={draftWidth}
+            onChange={(event) => setDraftWidth(event.target.value)}
+          />
+        </label>
+        <label className="number-field">
+          <span>Height</span>
+          <input
+            type="number"
+            min={MIN_CANVAS_SIZE}
+            max={MAX_CANVAS_SIZE}
+            step="20"
+            value={draftHeight}
+            onChange={(event) => setDraftHeight(event.target.value)}
+          />
+        </label>
+      </div>
+      <button type="submit" className="primary-wide-button" disabled={!valid}>Apply size</button>
+      <p className={`field-help${valid ? "" : " is-error"}`}>
+        Use whole numbers from {MIN_CANVAS_SIZE} to {MAX_CANVAS_SIZE} units.
+      </p>
+    </form>
   );
 }
 

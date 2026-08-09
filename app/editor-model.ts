@@ -1,6 +1,8 @@
 export const CANVAS_WIDTH = 1200;
 export const CANVAS_HEIGHT = 800;
 export const GRID_SIZE = 20;
+export const MIN_CANVAS_SIZE = 200;
+export const MAX_CANVAS_SIZE = 5000;
 
 export type VariableKind = "random" | "deterministic" | "double" | "diamond" | "factor" | "small-circle";
 export type LineStyle = "straight" | "squiggly";
@@ -81,13 +83,18 @@ export type DocumentAction =
   | { type: "delete"; ids: string[] }
   | { type: "group"; id: string; memberIds: string[] }
   | { type: "ungroup"; groupIds: string[] }
-  | { type: "setSnap"; value: boolean };
+  | { type: "setSnap"; value: boolean }
+  | { type: "setCanvasSize"; width: number; height: number };
 
 export function uid(prefix: string): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return `${prefix}-${crypto.randomUUID()}`;
   }
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+export function normalizeCanvasSize(value: number): number {
+  return Math.min(MAX_CANVAS_SIZE, Math.max(MIN_CANVAS_SIZE, Math.round(value)));
 }
 
 export function emptyDocument(): DocumentV1 {
@@ -266,6 +273,15 @@ export function documentReducer(document: DocumentV1, action: DocumentAction): D
     }
     case "setSnap":
       return { ...document, canvas: { ...document.canvas, snapToGrid: action.value } };
+    case "setCanvasSize":
+      return {
+        ...document,
+        canvas: {
+          ...document.canvas,
+          width: normalizeCanvasSize(action.width),
+          height: normalizeCanvasSize(action.height),
+        },
+      };
   }
 }
 
@@ -288,6 +304,8 @@ export function validateDocument(value: unknown): { ok: true; document: Document
   if (
     !finiteNumber(canvas.width) ||
     !finiteNumber(canvas.height) ||
+    canvas.width < MIN_CANVAS_SIZE || canvas.width > MAX_CANVAS_SIZE ||
+    canvas.height < MIN_CANVAS_SIZE || canvas.height > MAX_CANVAS_SIZE ||
     !finiteNumber(canvas.gridSize) ||
     typeof canvas.background !== "string" ||
     typeof canvas.snapToGrid !== "boolean"
