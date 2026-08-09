@@ -1,6 +1,6 @@
 # Plate Studio
 
-Plate Studio is a browser-based editor for creating publication-ready statistical plate diagrams. It uses a custom SVG scene so the editing canvas and exported artwork share the same geometry.
+Plate Studio is a fully vibe-coded browser-based editor for creating publication-ready statistical plate diagrams. It uses a custom SVG scene so the editing canvas and exported artwork share the same geometry.
 
 ## Features
 
