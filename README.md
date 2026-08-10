@@ -6,6 +6,7 @@ Plate Studio is a fully vibe-coded browser-based editor for creating publication
 
 - Circle, square, double-circle, diamond, small-square, and small-circle nodes
 - Known/unknown shading and TeX-style math labels
+- Text-node hit and selection boxes fitted to rendered glyphs
 - Resizable square/rounded plates with solid/dashed borders and attached corner labels
 - Straight or sinusoidal, solid or dashed connections with arrow, switch-bar, or undirected ends
 - Compact arrowheads, spaced edge labels, matched plain/TeX sizing, and horizontal-only node label auto-fit

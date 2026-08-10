@@ -125,6 +125,41 @@ export function scaledMathDimensions(
   return { width, height };
 }
 
+export function estimatedLabelDimensions(
+  source: string,
+  fontSize = 20,
+  maxWidth = 360,
+): { width: number; height: number } {
+  const visible = source
+    .replace(/\\\$/g, "\u0000")
+    .replace(/\\(?:boldsymbol|mathbf|mathrm|mathit|text)\b/g, "")
+    .replace(/\\[a-zA-Z]+/g, "M")
+    .replace(/\\./g, "M")
+    .replace(/[$^_{}]/g, "")
+    .replace(/\u0000/g, "$");
+  const glyphWidth = fontSize * 0.58;
+  return {
+    width: Math.min(maxWidth, Math.max(glyphWidth, visible.length * glyphWidth)),
+    height: fontSize * 1.4,
+  };
+}
+
+export function anchoredLabelBounds(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  anchor: "middle" | "end" = "middle",
+  verticalAnchor: "middle" | "bottom" = "middle",
+): Bounds {
+  return {
+    x: anchor === "end" ? x - width : x - width / 2,
+    y: verticalAnchor === "bottom" ? y - height : y - height / 2,
+    width,
+    height,
+  };
+}
+
 export function elementBounds(element: DiagramElement): Bounds | null {
   if (element.type === "edge") return null;
   if (element.type === "variable") {
@@ -137,8 +172,8 @@ export function elementBounds(element: DiagramElement): Bounds | null {
     };
   }
   if (element.type === "plate") return { x: element.x, y: element.y, width: element.width, height: element.height };
-  const width = Math.max(34, element.text.replace(/\\./g, "x").length * 9.5);
-  return { x: element.x - width / 2, y: element.y - 16, width, height: 32 };
+  const dimensions = estimatedLabelDimensions(element.text);
+  return anchoredLabelBounds(element.x, element.y, dimensions.width, dimensions.height);
 }
 
 export function boundsIntersect(a: Bounds, b: Bounds): boolean {
@@ -153,14 +188,14 @@ export function contentBounds(document: DocumentV1, padding = 24): Bounds {
     const endpoints = edgeEndpoints(element, document);
     if (!endpoints) return [];
     const labelPoint = edgeLabelPoint(endpoints.start, endpoints.end);
-    const labelWidth = element.label ? Math.max(34, element.label.replace(/\\./g, "x").length * 7.5) : 0;
+    const labelDimensions = element.label ? estimatedLabelDimensions(element.label, 15, 240) : null;
     const minX = Math.min(endpoints.start.x, endpoints.end.x) - 8;
     const minY = Math.min(endpoints.start.y, endpoints.end.y) - 8;
     const maxX = Math.max(endpoints.start.x, endpoints.end.x) + 8;
     const maxY = Math.max(endpoints.start.y, endpoints.end.y) + 8;
     const pathBounds = { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
-    if (!labelWidth) return [pathBounds];
-    const labelBounds = { x: labelPoint.x - labelWidth / 2, y: labelPoint.y - 16, width: labelWidth, height: 32 };
+    if (!labelDimensions) return [pathBounds];
+    const labelBounds = anchoredLabelBounds(labelPoint.x, labelPoint.y, labelDimensions.width, labelDimensions.height);
     const x = Math.min(pathBounds.x, labelBounds.x);
     const y = Math.min(pathBounds.y, labelBounds.y);
     const right = Math.max(pathBounds.x + pathBounds.width, labelBounds.x + labelBounds.width);

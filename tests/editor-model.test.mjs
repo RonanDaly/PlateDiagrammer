@@ -13,11 +13,13 @@ import {
   validateLabel,
 } from "../app/editor-model.ts";
 import {
+  anchoredLabelBounds,
   BAR_HEAD_GAP,
   EDGE_LABEL_OFFSET,
   PLATE_HIT_STROKE_WIDTH,
   edgeLabelPoint,
   edgeEndpoints,
+  estimatedLabelDimensions,
   resizePlate,
   scaledMathDimensions,
   snap,
@@ -113,6 +115,17 @@ test("keeps the math em scale stable when scripts make the view box taller", () 
   assert.equal(plain.width, 20);
   assert.equal(scripted.width, 20);
   assert.equal(scripted.height, 36);
+});
+
+test("sizes text hit bounds from rendered glyphs rather than TeX source length", () => {
+  const greek = estimatedLabelDimensions("$\\delta$", 20, 360);
+  const plain = estimatedLabelDimensions("delta", 20, 360);
+  assert.ok(greek.width < plain.width);
+  assert.ok(greek.width < "$\\delta$".length * 9.5);
+  assert.deepEqual(
+    anchoredLabelBounds(100, 80, greek.width, greek.height),
+    { x: 100 - greek.width / 2, y: 80 - greek.height / 2, width: greek.width, height: greek.height },
+  );
 });
 
 test("deleting a variable cascades to incident connections", () => {

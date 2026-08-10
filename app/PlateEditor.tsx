@@ -34,11 +34,13 @@ import {
   type VariableNode,
 } from "./editor-model";
 import {
+  anchoredLabelBounds,
   boundsIntersect,
   contentBounds,
   edgeLabelPoint,
   edgeEndpoints,
   elementBounds,
+  estimatedLabelDimensions,
   PLATE_HIT_STROKE_WIDTH,
   resizePlate,
   scaledMathDimensions,
@@ -157,6 +159,8 @@ function MathLabel({
   className = "diagram-label",
   anchor = "middle",
   verticalAnchor = "middle",
+  interactive = false,
+  selected = false,
 }: {
   source: string;
   x: number;
@@ -166,8 +170,15 @@ function MathLabel({
   className?: string;
   anchor?: "middle" | "end";
   verticalAnchor?: "middle" | "bottom";
+  interactive?: boolean;
+  selected?: boolean;
 }) {
-  const [renderedMath, setRenderedMath] = useState<{ source: string; markup: string } | null>(null);
+  const [renderedMath, setRenderedMath] = useState<{
+    source: string;
+    markup: string;
+    width: number;
+    height: number;
+  } | null>(null);
   const labelError = validateLabel(source);
   const shouldTypeset = Boolean(source.trim()) && !labelError;
 
@@ -199,7 +210,7 @@ function MathLabel({
         svg.setAttribute("height", String(renderHeight));
         svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
         svg.setAttribute("aria-hidden", "true");
-        setRenderedMath({ source, markup: svg.outerHTML });
+        setRenderedMath({ source, markup: svg.outerHTML, width: renderWidth, height: renderHeight });
       } catch {
         // Invalid or unavailable math falls back to a readable source label.
       }
@@ -207,33 +218,57 @@ function MathLabel({
     return () => { cancelled = true; };
   }, [anchor, fontSize, maxWidth, shouldTypeset, source, verticalAnchor]);
 
-  const markup = renderedMath?.source === source ? renderedMath.markup : null;
-  if (markup) {
+  const rendered = renderedMath?.source === source ? renderedMath : null;
+  const interactionRect = (bounds: Bounds) => interactive ? (
+    <rect
+      data-editor-ui="true"
+      data-label-hit-box="true"
+      x={bounds.x}
+      y={bounds.y}
+      width={bounds.width}
+      height={bounds.height}
+      rx="3"
+      fill={selected ? "#e6f4f3" : "transparent"}
+      stroke={selected ? "#0c7a84" : "none"}
+      strokeWidth={selected ? "1.5" : undefined}
+      strokeDasharray={selected ? "4 3" : undefined}
+      pointerEvents="all"
+    />
+  ) : null;
+
+  if (rendered) {
+    const bounds = anchoredLabelBounds(0, 0, rendered.width, rendered.height, anchor, verticalAnchor);
     return (
       <g
         transform={`translate(${x} ${y})`}
         data-math-rendered="true"
-        pointerEvents="none"
         color="#20282e"
-        dangerouslySetInnerHTML={{ __html: markup }}
-      />
+      >
+        {interactionRect(bounds)}
+        <g pointerEvents="none" dangerouslySetInnerHTML={{ __html: rendered.markup }} />
+      </g>
     );
   }
 
+  const fallbackDimensions = estimatedLabelDimensions(source, fontSize, maxWidth);
+  const fallbackBounds = anchoredLabelBounds(x, y, fallbackDimensions.width, fallbackDimensions.height, anchor, verticalAnchor);
   return (
-    <text
-      x={x}
-      y={y}
-      className={className}
-      textAnchor={anchor}
-      dominantBaseline={verticalAnchor === "middle" ? "central" : "auto"}
-      pointerEvents="none"
-      fill="#20282e"
-      fontFamily="Georgia, 'Times New Roman', serif"
-      fontSize={fontSize}
-    >
-      {plainLabel(source)}
-    </text>
+    <g>
+      {interactionRect(fallbackBounds)}
+      <text
+        x={x}
+        y={y}
+        className={className}
+        textAnchor={anchor}
+        dominantBaseline={verticalAnchor === "middle" ? "central" : "auto"}
+        pointerEvents="none"
+        fill="#20282e"
+        fontFamily="Georgia, 'Times New Roman', serif"
+        fontSize={fontSize}
+      >
+        {plainLabel(source)}
+      </text>
+    </g>
   );
 }
 
@@ -1098,7 +1133,6 @@ export default function PlateEditor() {
                   {foreground.map((element) => {
                     if (element.type === "text") {
                       const selected = selection.includes(element.id);
-                      const bounds = elementBounds(element)!;
                       return (
                         <g
                           key={element.id}
@@ -1106,31 +1140,15 @@ export default function PlateEditor() {
                           className="diagram-element text-element"
                           onPointerDown={(event) => beginElementPointer(event, element)}
                         >
-                          <rect
-                            data-editor-ui="true"
-                            x={bounds.x - 8}
-                            y={bounds.y - 4}
-                            width={bounds.width + 16}
-                            height={bounds.height + 8}
-                            fill="transparent"
-                            stroke="none"
-                            pointerEvents="all"
+                          <MathLabel
+                            source={element.text}
+                            x={element.x}
+                            y={element.y}
+                            maxWidth={360}
+                            fontSize={20}
+                            interactive
+                            selected={selected}
                           />
-                          {selected && (
-                            <rect
-                              data-editor-ui="true"
-                              x={bounds.x - 6}
-                              y={bounds.y - 2}
-                              width={bounds.width + 12}
-                              height={bounds.height + 4}
-                              rx="5"
-                              fill="#e6f4f3"
-                              stroke="#0c7a84"
-                              strokeWidth="1.5"
-                              strokeDasharray="4 3"
-                            />
-                          )}
-                          <MathLabel source={element.text} x={element.x} y={element.y} maxWidth={360} fontSize={20} />
                         </g>
                       );
                     }
