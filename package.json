@@ -12,10 +12,17 @@
     "test": "npm run build && node --experimental-strip-types --test tests/*.test.mjs",
     "test:unit": "node --experimental-strip-types --test tests/editor-model.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "render": "node --experimental-strip-types cli/render.mjs",
+    "postinstall": "node scripts/prepare-mathjax.mjs",
+    "predev": "node scripts/prepare-mathjax.mjs",
+    "prebuild": "node scripts/prepare-mathjax.mjs",
+    "test:cli": "node --experimental-strip-types --test tests/cli.test.mjs"
   },
   "dependencies": {
+    "@mathjax/mathjax-newcm-font": "4.1.3",
     "drizzle-orm": "0.45.2",
+    "mathjax": "4.1.3",
     "next": "16.2.6",
     "react": "19.2.6",
     "react-dom": "19.2.6"
@@ -31,6 +38,7 @@
     "drizzle-kit": "0.31.10",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
+    "playwright": "1.63.0",
     "react-server-dom-webpack": "19.2.6",
     "tailwindcss": "4.2.1",
     "typescript": "5.9.3",

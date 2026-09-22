@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import "./globals.css";
+import { mathJaxConfig, mathJaxScriptUrl } from "./mathjax-config";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -30,19 +31,12 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-const mathJaxConfig = `
-window.MathJax = {
-  output: { linebreaks: { inline: false } },
-  svg: { fontCache: 'local' },
-  options: { enableMenu: false }
-};`;
-
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
       <head>
         <script dangerouslySetInnerHTML={{ __html: mathJaxConfig }} />
-        <script defer src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-svg.js" />
+        <script defer src={mathJaxScriptUrl} />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable}`}>{children}</body>
     </html>
